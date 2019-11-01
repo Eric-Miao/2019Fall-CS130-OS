@@ -2,6 +2,7 @@
 #define USERPROG_PROCESS_H
 
 #include "threads/thread.h"
+#include "threads/synch.h"
 
 typedef int tid_t;
 
@@ -15,9 +16,9 @@ struct PCB
 {
   int tid;                            /* This is actually the same tid */
   bool beingwaited;                   /* Signal of me whether being waited. */
-  struct list *child_process;         /* The child threads I called */
-  struct semaphore *exit_sema;        /* The exit semaphore used for wait. */
-  struct semaphore *exec_sema;        /* The exec semaphore used for exec. */
+  struct list child_process;          /* The child threads I called */
+  struct semaphore exit_sema;        /* The exit semaphore used for wait. */
+  struct semaphore exec_sema;        /* The exec semaphore used for exec. */
   struct list_elem pcb_elem;          /* Use for added into child_process. */
   struct thread *parent;              /* Parent thread execuated me */
 

@@ -39,7 +39,7 @@ static void sys_close (int fd);
 
 static uint32_t get_arg (const uint32_t*, int);
 static bool is_vaddr (const void* );
-
+static struct loaded_file * search_file (int);
 void
 syscall_init (void) 
 {
@@ -175,14 +175,14 @@ syscall_handler (struct intr_frame *f UNUSED)
 }
 
 /* Terminates Pintos by calling shutdown_power_off().*/
-void 
+static void 
 sys_halt (void)
 {
   shutdown_power_off ();
 }
 
 /* Terminates the current user program, returning status to the kernel. */
-void 
+static void 
 sys_exit (int status)
 {
   /* waiting to set the exit status of current thread. */
@@ -192,25 +192,25 @@ sys_exit (int status)
   thread_exit();
 }
 
-pid_t 
+static pid_t 
 sys_exec (const char *file)
 {
   return process_execute (file);
 }
 
-int 
+static int 
 sys_wait (pid_t pid)
 {
   return process_wait(pid);
 }
 
-bool 
+static bool 
 sys_create (const char *file, unsigned initial_size)
 {
   return filesys_create(file, initial_size);
 }
 
-bool 
+static bool 
 sys_remove (const char *file)
 {
   bool ret;
@@ -221,7 +221,7 @@ sys_remove (const char *file)
 }
 
 
-int 
+static int 
 sys_open (const char *file)
 {
   acquire_lock_file ();
@@ -241,40 +241,30 @@ sys_open (const char *file)
 
 }
 
-int 
+static int 
 sys_filesize (int fd)
 {
-  struct thread* t = thread_current ();
-  struct list files = t->file_list;
-  struct list_elem *e;
   struct loaded_file *target =NULL;
   int ret;
 
   if ((fd == 0) || (fd == 1))
     sys_exit (-1);
 
-  for (e = list_begin (&files); e != list_end (&files); e = list_next (e)){
-    target = list_entry (e, struct loaded_file, file_elem);
-    if (fd == target->fd)
-    {
-      acquire_lock_file ();
-      ret = file_length(target->file);
-      release_lock_file ();
-      break;
-    }
-    else
-      ret = -1;
-    
+  target = search_file (fd);
+  if (fd == target->fd)
+  {
+    acquire_lock_file ();
+    ret = file_length(target->file);
+    release_lock_file ();
   }
+  else
+    ret = -1;
   return ret;
 }
 
-int 
+static int 
 sys_read (int fd, void *buffer, unsigned length)
 {
-  struct thread* t = thread_current ();
-  struct list files = t->file_list;
-  struct list_elem *e;
   struct loaded_file *target =NULL;
   int ret = -1;
   uint8_t *_buffer = buffer;
@@ -290,28 +280,22 @@ sys_read (int fd, void *buffer, unsigned length)
   }
   else
   {
-    for (e = list_begin (&files); e != list_end (&files); e = list_next (e)){
-    target = list_entry (e, struct loaded_file, file_elem);
-      if (fd == target->fd)
-      {
-        acquire_lock_file ();
-        ret = file_read(target->file, buffer, length);
-        release_lock_file ();
-        break;
-      }
-      else
-        ret = -1;
+    target = search_file (fd);
+    if (target)
+    {
+      acquire_lock_file ();
+      ret = file_read(target->file, buffer, length);
+      release_lock_file ();
     }
-  }
+    else
+      ret = -1;
+    }
   return ret;
 }
 
-int 
+static int 
 sys_write (int fd, const void *buffer, unsigned length)
 {
-  struct thread* t = thread_current ();
-  struct list files = t->file_list;
-  struct list_elem *e;
   struct loaded_file *target =NULL;
   int ret;
 
@@ -323,99 +307,77 @@ sys_write (int fd, const void *buffer, unsigned length)
   }
   else
   {
-    for (e = list_begin (&files); e != list_end (&files); e = list_next (e)){
-    target = list_entry (e, struct loaded_file, file_elem);
-      if (fd == target->fd)
-      {
-        acquire_lock_file ();
-        ret = file_write(target->file, buffer, length);
-        release_lock_file ();
-        break;
-      }
-      else
-        ret = 0;
+    target = search_file (fd);
+    if (target)
+    {
+      acquire_lock_file ();
+      ret = file_write(target->file, buffer, length);
+      release_lock_file ();
     }
+    else
+      ret = 0;
   }
   return ret;
 }
 
-void 
+static void 
 sys_seek (int fd, unsigned position)
 {
-  struct thread* t = thread_current ();
-  struct list files = t->file_list;
-  struct list_elem *e;
   struct loaded_file *target =NULL;
 
   if ((fd == 0) || (fd == 1))
     sys_exit (-1);
 
-  for (e = list_begin (&files); e != list_end (&files); e = list_next (e)){
-    target = list_entry (e, struct loaded_file, file_elem);
-    if (fd == target->fd)
-    {
-      acquire_lock_file ();
-      file_seek(target->file, position);
-      release_lock_file ();
-      break;
-    }
-  }
+  target = search_file (fd);
+  if(target)  
+  {
+    acquire_lock_file ();
+    file_seek(target->file, position);
+    release_lock_file ();
+  }    
 }
 
-unsigned 
+static unsigned 
 sys_tell (int fd)
 {
-  struct thread* t = thread_current ();
-  struct list files = t->file_list;
-  struct list_elem *e;
   struct loaded_file *target =NULL;
   int ret;
 
   if ((fd == 0) || (fd == 1))
     sys_exit (-1);
 
-  for (e = list_begin (&files); e != list_end (&files); e = list_next (e)){
-    target = list_entry (e, struct loaded_file, file_elem);
-    if (fd == target->fd)
-    {
-      acquire_lock_file ();
-      ret = file_tell(target->file);
-      release_lock_file ();
-      break;
-    }
-    else
-      ret = -1;
-    
+  target = search_file (fd);
+  if (target)
+  {
+    acquire_lock_file ();
+    ret = file_tell(target->file);
+    release_lock_file ();
   }
+  else
+    ret = -1;
   return ret;
 }
 
-void 
+static void 
 sys_close (int fd)
 {
-  struct thread* t = thread_current ();
-  struct list files = t->file_list;
-  struct list_elem *e;
   struct loaded_file *target =NULL;
 
   if ((fd == 0) || (fd == 1))
     sys_exit (-1);
 
-  for (e = list_begin (&files); e != list_end (&files); e = list_next (e)){
-    target = list_entry (e, struct loaded_file, file_elem);
-    if (fd == target->fd)
-    {
-      acquire_lock_file ();
-      file_close(target->file);
-      release_lock_file ();
-      list_remove (&target->file_elem);
-      free(target);
-      break;
-    }
+  target = search_file (fd);
+  if(target)
+  {    
+    acquire_lock_file ();
+    file_close(target->file);
+    release_lock_file ();
+    list_remove (&target->file_elem);
+    free(target);
   }
 }
 
-bool
+static bool
 is_vaddr (const void* vaddr)
 {
   if (vaddr == NULL)
@@ -442,4 +404,20 @@ get_arg (const uint32_t* p, int offset)
     sys_exit (-1);
 
   return *(p);
+}
+
+static struct loaded_file * 
+search_file (int fd)
+{
+  struct thread* t = thread_current ();
+  struct list *files = &t->file_list;
+  struct list_elem *e;
+  struct loaded_file *target =NULL;
+
+  for (e = list_begin (files); e != list_end (files); e = list_next (e)){
+    target = list_entry (e, struct loaded_file, file_elem);
+    if (fd == target->fd)
+      return target;
+  }
+  return false;
 }

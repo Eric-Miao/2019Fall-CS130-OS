@@ -64,11 +64,12 @@ process_execute (const char *file_name)
 static void
 start_process (void *file_name_)
 {
+  printf("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!%d\n",2681);
   char *file_name = file_name_;
-  char *passin = NULL;
-  char *markptr = NULL;        /* Distract the name ZTR*/
   struct intr_frame if_;
   bool success;
+  char *passin = NULL;
+  char *markptr = NULL;        /* Distract the name ZTR*/
 
   /* Initialize interrupt frame and load executable. MODIFIED BY ZTR*/
   memset (&if_, 0, sizeof if_);
@@ -79,12 +80,12 @@ start_process (void *file_name_)
   success = load (passin, &if_.eip, &if_.esp);
 
   /* If load failed, quit. */
-  palloc_free_page (file_name);
   if (!success) 
   {
+    palloc_free_page (file_name);
     thread_exit ();
-    thread_current()->pcb->parent->exec_success=false;
-    sema_up(&thread_current()->pcb->parent->pcb->exec_sema);
+    //thread_current()->pcb->parent->exec_success=false;
+    //sema_up(&thread_current()->pcb->parent->pcb->exec_sema);
   
   }
   /* Parsing Names. Below Done By ZTR*/
@@ -114,8 +115,8 @@ start_process (void *file_name_)
   if_.esp = ptr;
   palloc_free_page (file_name);
 
-  thread_current()->pcb->parent->exec_success=true;
-  sema_up(&thread_current()->pcb->parent->pcb->exec_sema);
+  //thread_current()->pcb->parent->exec_success=true;
+  //sema_up(&thread_current()->pcb->parent->pcb->exec_sema);
 
 
     /* Start the user process by simulating a return from an
@@ -146,7 +147,7 @@ process_wait (tid_t child_tid UNUSED)
   cur = thread_current ();
 
   struct list_elem *iter;
-  struct list *child_list = cur->pcb->child_process;
+  struct list *child_list = &cur->pcb->child_process;
   struct PCB *target=NULL;
 
   for (iter = list_begin (child_list); iter != list_end (child_list);
@@ -576,8 +577,14 @@ install_page (void *upage, void *kpage, bool writable)
 void
 pcb_init (struct PCB *pcb)
 {
+  printf("\nright now in pcb_init.\n\n");
+
+  printf("\ninto list_init.\n\n");
   list_init (&pcb->child_process);
+  printf("\ninto sema_init.\n\n");
   sema_init (&pcb->exit_sema, 0);
+  printf("\ninto sema_init.\n\n");
+
   sema_init (&pcb->exec_sema, 0);
   pcb->beingwaited = false;
   pcb->parent = NULL;

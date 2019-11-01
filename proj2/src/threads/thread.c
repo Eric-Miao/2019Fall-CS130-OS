@@ -98,8 +98,11 @@ thread_init (void)
   lock_init (&file_lock);
 
   /* Set up a thread structure for the running thread. */
+  printf("\nthread_init #1\n\n");
   initial_thread = running_thread ();
+  printf("\nthread_init #2\n\n");
   init_thread (initial_thread, "main", PRI_DEFAULT);
+  printf("\nthread_init #3\n\n");
   initial_thread->status = THREAD_RUNNING;
   initial_thread->tid = allocate_tid ();
 }
@@ -112,13 +115,17 @@ thread_start (void)
   /* Create the idle thread. */
   struct semaphore idle_started;
   sema_init (&idle_started, 0);
-  thread_create ("idle", PRI_MIN, idle, &idle_started);
 
+  printf("\ninto thread_create\n\n");
+  thread_create ("idle", PRI_MIN, idle, &idle_started);
+  printf("%s\n","out");
   /* Start preemptive thread scheduling. */
   intr_enable ();
 
   /* Wait for the idle threaStartd to initialize idle_thread. */
+  printf("%s\n","deuifvueif");
   sema_down (&idle_started);
+  printf("%s\n","cbwkvciwe");
 }
 
 /* Called by the timer interrupt handler at each timer tick.
@@ -176,6 +183,7 @@ thread_create (const char *name, int priority,
   struct switch_threads_frame *sf;
   tid_t tid;
 
+  enum intr_level old_level;
   ASSERT (function != NULL);
 
   /* Allocate thread. */
@@ -183,34 +191,58 @@ thread_create (const char *name, int priority,
   if (t == NULL)
     return TID_ERROR;
 
+
   /* Initialize thread. */
+  printf("\ninto init_thread\n\n");
+
   init_thread (t, name, priority);
   tid = t->tid = allocate_tid ();
+
+  /* Initialize PCB. */
+  t->pcb = (struct PCB *)malloc(sizeof(struct PCB));
+  printf("\nmalloced the pcb.\n\n");
+
   t->pcb->tid = tid;
+  t->pcb->beingwaited = false;
 
-  if (thread_current()!=idle_thread)
-  {
-    list_push_back(thread_current()->pcb->child_process, &t->pcb->pcb_elem);
-  }
+  list_init (&t->pcb->child_process);
+  sema_init (&t->pcb->exit_sema, 0);
+  sema_init (&t->pcb->exec_sema, 0);
 
+  printf("\nlist inited\n\n");
 
+  if (t != initial_thread) 
+    t->pcb->parent = thread_current();
+  else
+    t->pcb->parent = NULL;
+  
+  printf("\nparent assigned\n\n");
+  struct list *a=&thread_current()->pcb->child_process;
+  printf("\naaaaaaaaa\n\n");
+
+  list_push_back(a, &t->pcb->pcb_elem);
+  old_level=intr_disable();
+  printf("\nlist pushed\n\n");
   /* Stack frame for kernel_thread(). */
   kf = alloc_frame (t, sizeof *kf);
   kf->eip = NULL;
   kf->function = function;
   kf->aux = aux;
-
+  printf("%s\n","!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
   /* Stack frame for switch_entry(). */
   ef = alloc_frame (t, sizeof *ef);
   ef->eip = (void (*) (void)) kernel_thread;
-
+  printf("%s\n","!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+  
   /* Stack frame for switch_threads(). */
   sf = alloc_frame (t, sizeof *sf);
   sf->eip = switch_entry;
   sf->ebp = 0;
-
+  intr_set_level(old_level);
   /* Add to run queue. */
+  printf("%s\n","!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
   thread_unblock (t);
+  printf("%d\n",7879);
 
   return tid;
 }
@@ -463,7 +495,7 @@ static void
 init_thread (struct thread *t, const char *name, int priority)
 {
   enum intr_level old_level;
-
+  
   ASSERT (t != NULL);
   ASSERT (PRI_MIN <= priority && priority <= PRI_MAX);
   ASSERT (name != NULL);
@@ -476,15 +508,18 @@ init_thread (struct thread *t, const char *name, int priority)
   t->magic = THREAD_MAGIC;
 
   /* Proj2 initialize. */
-  pcb_init (t->pcb);
   list_init(&t->file_list);
+
   t->exit_status = 0;
   t->cur_fd = 1;
   t->exec_success = false;
   t->self_file = NULL;
-  if  (t != initial_thread) 
-    t->pcb->parent = thread_current();
 
+  old_level = intr_disable ();
+  list_push_back (&all_list, &t->allelem);
+  intr_set_level (old_level);
+
+  printf("\ninit_thread finished!!!!!!!!!!!!!!!!!!!!\n\n.");
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and
