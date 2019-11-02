@@ -234,7 +234,6 @@ static bool
 sys_create (const char *file, unsigned initial_size)
 {
   acquire_lock_file ();
-  printf(initial_size);
   return filesys_create(file, initial_size);
   release_lock_file ();
 
