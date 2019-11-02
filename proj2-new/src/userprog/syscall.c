@@ -255,18 +255,23 @@ static int
 sys_open (const char *file)
 {
   acquire_lock_file ();
-  struct file *target_file = filesys_open((const char *)*file);
+  //printf("\n syscall open.\n\n");
+  struct file *target_file = filesys_open((const char *)file);
   release_lock_file ();
-
+//printf("\n target_obtained.\n\n");
   if (!target_file)
   {
     return -1;
   }
+
   struct loaded_file *opened_file = (struct loaded_file *)malloc(sizeof(struct loaded_file));
   thread_current()->cur_fd ++;
   opened_file->fd = thread_current()->cur_fd;
   opened_file->file = target_file;
+//printf("\n before target push.\n\n");  
   list_push_back (&thread_current()->file_list,&opened_file->file_elem);
+//printf("\n target pushed.\n\n");  
+  
   return opened_file->fd;
 
 }
