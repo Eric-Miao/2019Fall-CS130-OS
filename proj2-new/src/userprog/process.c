@@ -31,7 +31,7 @@ process_execute (const char *file_name)
   char *fn_copy;
   tid_t tid;
   char *save_ptr;
-  char *cmd = palloc_get_page (0);
+  char *cmd;
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
   fn_copy = palloc_get_page (0);
@@ -43,12 +43,12 @@ process_execute (const char *file_name)
   cmd = strtok_r (file_name, " ", &save_ptr);
 
   /* Create a new thread to execute FILE_NAME. */
-  printf("\nbefore thread_create\n\n");
   tid = thread_create (cmd, PRI_DEFAULT, start_process, fn_copy);
-  printf("\nafter thread_create\n\n");
   if (tid == TID_ERROR)
+  {
     palloc_free_page (fn_copy); 
-  palloc_free_page (cmd);
+  }
+
   return tid;
 }
 
@@ -69,12 +69,11 @@ start_process (void *file_name_)
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-  printf("before goin to loadn\n\n");
-  success = load (passin, &if_.eip, &if_.esp);
 
-
-  struct thread *t=thread_current();
+  struct thread *t = thread_current ();
   t->FileSelf=filesys_open(passin);
+
+  success = load (passin, &if_.eip, &if_.esp);
 
   /* If load failed, quit. */
   if (!success) 
@@ -93,27 +92,30 @@ start_process (void *file_name_)
   file_deny_write(t->FileSelf);
 
   char *esp=(char *)if_.esp;
-  char *arg[256];               //assume numbers of argument below 256
+  char *arg[256];               
   int i,n=0;
-  for (; passin != NULL; passin = strtok_r (NULL, " ", &iter))   //copy the argument to user stack
+  for (; passin != NULL; passin = strtok_r (NULL, " ", &iter))   
     {
-        esp-=strlen(passin)+1;                       //because user stack increase to low addr.
-        strlcpy(esp,passin,strlen(passin)+2);          //copy param to user stack
+        esp-=strlen(passin)+1;                       
+        strlcpy(esp,passin,strlen(passin)+2);          
         arg[n++]=esp;
 
     }
-  while((int)esp%4)            //word align
+  while((int)esp%4)         
     esp--;
 
   int *p = esp-4;
-  *p-- = 0;                      //first 0
-  for(i = n-1;i >= 0;i--)           //place the arguments' pointers to stack
-    *p-- = (int *)arg[i];
-  *p-- = p+1;
-  *p-- = n;
-  *p = 0;
-  esp = p;
-  if_.esp = esp;                   //set new stack top
+  *(p--) = 0;                   
+  for(i = n-1;i >= 0;i--)       
+  { 
+    *p = (int *)arg[i];
+    p--;
+  }
+  *(p--) = p+1;
+  *(p--) = n;
+  *(p--) = 0;
+  esp = p+1;
+  if_.esp = esp;                 
 
   palloc_free_page (file_name);
 
@@ -140,12 +142,9 @@ start_process (void *file_name_)
 int
 process_wait (tid_t child_tid)
 {
-  //while (true);
-    //printf("\nin waiting\n\n");
-  
+
   int ret;
   struct thread *t=GetThreadFromTid(child_tid);
-  printf("\n8\n\n");
   if (t == NULL || t->status == THREAD_DYING || t->ifsaved)  
   {
       ret = -1;
@@ -155,18 +154,15 @@ process_wait (tid_t child_tid)
 
   enum intr_level old_level=intr_disable();
   t->bingwaited=true;
-  printf("\n1\n\n");
   sema_down(&t->parent->wait_sema);      
-  printf("\n2\n\n");
          
   intr_set_level(old_level);
-  printf("\n3\n\n");
 
   ret=-1;
   ret=GetRetFromSonsList(thread_current(),child_tid);
-  printf("\n4\n\n");
 
   return ret;
+
 }
 
 /* Free the current process's resources. */
@@ -202,6 +198,8 @@ process_exit (void)
         file_allow_write (cur->FileSelf);
         file_close (cur->FileSelf);
       }
+      printf("%s: exit(%d)\n", cur->name, cur->exit_status);
+
       record_ret (cur->parent, cur->tid, cur->exit_status);
       cur->ifsaved = true;
       if (cur->parent != NULL && cur->bingwaited)
@@ -211,7 +209,6 @@ process_exit (void)
       }
       while (!list_empty (&cur->sons_ret))
       {
-
         struct son *target = list_entry (list_pop_front(&cur->sons_ret), 
                         struct son, sonelem);
         free (target);
@@ -221,7 +218,6 @@ process_exit (void)
       pagedir_activate (NULL);
       pagedir_destroy (pd);
       intr_set_level(old_level);
-      printf("%s: exit(%d)\n", cur->name, cur->exit_status);
     }
 }
 
@@ -578,7 +574,6 @@ GetRetFromSonsList(struct thread *t,tid_t tid)
 {
     struct list_elem *e;
     int ret=-1;
-    printf("SSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSSs");
     for(e=list_begin(&t->sons_ret);e!=list_end(&t->sons_ret);e=list_next(e))
     {
         struct son *target_son=list_entry(e,struct son, sonelem);
@@ -595,7 +590,7 @@ GetRetFromSonsList(struct thread *t,tid_t tid)
 void 
 record_ret(struct thread *t,int tid,int ret)
 {
-    struct son *new=(struct son *)malloc(sizeof(struct son));
+    struct son *new=(struct son*)malloc(sizeof(struct son));
     new->exit_status=ret;
     new->tid=tid;
     list_push_back(&t->sons_ret,&new->sonelem);

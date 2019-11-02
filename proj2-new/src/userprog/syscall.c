@@ -80,8 +80,9 @@ syscall_handler (struct intr_frame *f UNUSED)
 
     /* Start another process. */            
     case SYS_EXEC:
-      printf("syscall == exec\n\n\n");
       *command = get_arg (esp, 1);
+      if (!is_vaddr (command))
+        sys_exit (-1);
       f->eax = sys_exec ((char*)command);
       break;
     /* finished */
@@ -95,6 +96,8 @@ syscall_handler (struct intr_frame *f UNUSED)
     /* Create a file. */      
     case SYS_CREATE:      
       *file = get_arg (esp, 1);
+      if (!is_vaddr ((void *) *(esp+1)))
+        sys_exit (-1);
       size = get_arg (esp, 2);
       acquire_lock_file ();
       bool_ret = sys_create ((char *) file, size);
@@ -107,17 +110,19 @@ syscall_handler (struct intr_frame *f UNUSED)
     /* Delete a file. */   
     case SYS_REMOVE: 
       *file = get_arg (esp, 1);
-
+      if (!is_vaddr ((void *) *(esp+1)))
+        sys_exit (-1);
       bool_ret = sys_remove ((char *) file);
       f->eax = bool_ret;
       break;
+
     /* Open a file. */                
     case SYS_OPEN:       
       *file = get_arg(esp, 1);
-
+      if (!is_vaddr ((void *) *(esp+1)))
+        sys_exit (-1);
       int_ret = sys_open ((char *) file);
       f->eax = int_ret;
-
       break;
     /* finished */
     
@@ -132,6 +137,8 @@ syscall_handler (struct intr_frame *f UNUSED)
     case SYS_READ:    
       fd = get_arg (esp, 1);
       void* buffer1 = get_arg (esp, 2);
+      if (!is_vaddr ((void *) *(esp+2)))
+        sys_exit (-1);      
       size = get_arg (esp, 3);
 
       int_ret = sys_read (fd, buffer1, size);
@@ -144,6 +151,8 @@ syscall_handler (struct intr_frame *f UNUSED)
     case SYS_WRITE:            
       fd = get_arg (esp, 1);
       void* buffer2 = get_arg (esp, 2);
+      if (!is_vaddr ((void *) *(esp+2)))
+        sys_exit (-1);
       size = get_arg (esp, 3);
 
       int_ret = sys_write (fd, buffer2, size);
@@ -400,7 +409,7 @@ is_vaddr (const void* vaddr)
 static uint32_t
 get_arg (const uint32_t* p, int offset)
 {
-  p += (offset * 4);
+  p += (offset);
   if (!is_vaddr (p))
     sys_exit (-1);
 

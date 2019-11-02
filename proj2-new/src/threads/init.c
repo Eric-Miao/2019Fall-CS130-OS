@@ -286,10 +286,8 @@ run_task (char **argv)
   printf ("Executing '%s':\n", task);
 #ifdef USERPROG
   int tid = process_execute (task);
-  printf ("\nprocess_executed.\n\n");
   
   process_wait (tid);
-  printf ("\nAfter process_execute.\n\n");
 #else
   run_test (task);
 #endif
