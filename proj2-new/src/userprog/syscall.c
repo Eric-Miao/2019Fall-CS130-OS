@@ -37,8 +37,8 @@ static void sys_seek (int fd, unsigned position);
 static unsigned sys_tell (int fd);
 static void sys_close (int fd);
 
-static uint32_t get_arg (const uint32_t*, int);
-static bool is_vaddr (const void* );
+static uint32_t *get_arg (const uint32_t*, int);
+static void is_vaddr (const void* );
 static struct loaded_file * search_file (int);
 void
 syscall_init (void) 
@@ -49,6 +49,7 @@ syscall_init (void)
 static void
 syscall_handler (struct intr_frame *f UNUSED) 
 {
+
   uint32_t *esp = f->esp;
   uint32_t exit_status;
   uint32_t size;
@@ -60,8 +61,7 @@ syscall_handler (struct intr_frame *f UNUSED)
   bool bool_ret;
   pid_t pid;
 
-  if(!is_vaddr (esp))
-    sys_exit (-1);
+  is_vaddr (esp);
 
   syscall_no = (int) *esp;
 
@@ -75,73 +75,77 @@ syscall_handler (struct intr_frame *f UNUSED)
 
     /* Terminate this process. */     
     case SYS_EXIT:
-      exit_status = get_arg (esp, 1);
-      sys_exit (exit_status);
+      is_vaddr (esp+1);
+      sys_exit (*(esp+1));
       break;
     /* finished */
 
     /* Start another process. */            
     case SYS_EXEC:
-      *command = get_arg (esp, 1);
-      if (!is_vaddr (command))
-        sys_exit (-1);
-      f->eax = sys_exec ((char*)command);
+      is_vaddr (esp+1);
+      is_vaddr (*(esp+1));
+      f->eax = sys_exec ((char*)*(esp+1));
       break;
     /* finished */
     
     /* Wait for a child process to die. */      
-    case SYS_WAIT:             
-      pid = get_arg (esp, 1);
+    case SYS_WAIT:   
+      is_vaddr (esp+1);    
+      pid = *(esp+1);
       int_ret = sys_wait(pid);
       f->eax = int_ret;
       break;
     /* Create a file. */      
     case SYS_CREATE:      
-      *file = get_arg (esp, 1);
-      if (!is_vaddr ((void *) *(esp+1)))
-        sys_exit (-1);
-      size = get_arg (esp, 2);
+      is_vaddr (esp+1);
+      is_vaddr (*(esp+1));
+      is_vaddr (esp+2);
+      file = *(esp+1);
+      size = *(esp+2);
       acquire_lock_file ();
       bool_ret = sys_create ((char *) file, size);
       release_lock_file ();
       f->eax = bool_ret;
-
       break;
     /* finished */
 
     /* Delete a file. */   
     case SYS_REMOVE: 
-      *file = get_arg (esp, 1);
-      if (!is_vaddr ((void *) *(esp+1)))
-        sys_exit (-1);
+      is_vaddr (esp+1);
+      is_vaddr (*(esp+1));
+      file = *(esp+1);
       bool_ret = sys_remove ((char *) file);
       f->eax = bool_ret;
       break;
       
     /* Open a file. */                
-    case SYS_OPEN:       
-      *file = get_arg(esp, 1);
-      if (!is_vaddr ((void *) *(esp+1)))
-        sys_exit (-1);
-      int_ret = sys_open ((char *) file);
+    case SYS_OPEN:   
+      is_vaddr (esp+1);
+      is_vaddr (*(esp+1));
+      file = *(esp+1);
+      int_ret = sys_open ((char *) file);      
       f->eax = int_ret;
       break;
     /* finished */
     
     /* Obtain a file's size. */        
     case SYS_FILESIZE:    
-      fd = get_arg(esp, 1);
+      is_vaddr (esp+1);      
+      fd = *(esp+1);
       f->eax = sys_filesize (fd);
       break;         
     /* finished */
 
     /* Read from a file. */  
     case SYS_READ:    
-      fd = get_arg (esp, 1);
-      void* buffer1 = get_arg (esp, 2);
-      if (!is_vaddr ((void *) *(esp+2)))
-        sys_exit (-1);      
-      size = get_arg (esp, 3);
+      is_vaddr (esp+1);      
+      is_vaddr (esp+2);
+      is_vaddr (*(esp+2));
+      is_vaddr (esp+3);
+
+      fd = *(esp+1);
+      void* buffer1 = *(esp+2);
+      size = *(esp+3);
 
       int_ret = sys_read (fd, buffer1, size);
 
@@ -151,12 +155,14 @@ syscall_handler (struct intr_frame *f UNUSED)
     
     /* Write to a file. */               
     case SYS_WRITE:            
-      fd = get_arg (esp, 1);
-      void* buffer2 = get_arg (esp, 2);
-      if (!is_vaddr ((void *) *(esp+2)))
-        sys_exit (-1);
-      size = get_arg (esp, 3);
+      is_vaddr (esp+1);      
+      is_vaddr (esp+2);
+      is_vaddr (*(esp+2));
+      is_vaddr (esp+3);
 
+      fd = *(esp+1);
+      void* buffer2 = *(esp+2);
+      size = *(esp+3);
       int_ret = sys_write (fd, buffer2, size);
 
       f->eax = int_ret;
@@ -164,28 +170,33 @@ syscall_handler (struct intr_frame *f UNUSED)
 
     /* Change position in a file. */      
     case SYS_SEEK:
-      fd = get_arg(esp, 1);
-      uint32_t size = get_arg (esp, 2);
+      is_vaddr (esp+1);      
+      is_vaddr (esp+2);
+      fd = *(esp+1);
+      size = *(esp+2);
       sys_seek (fd, size);
       break;
     /* finished */
 
     /* Report current position in a file. */                  
     case SYS_TELL:
-      fd = get_arg(esp, 1);
+      is_vaddr (esp+1);      
+      fd = *(esp+1);
       f->eax = sys_tell (fd);
       break;         
     /* finished */
 
     /* Close a file. */                  
     case SYS_CLOSE:  
-      fd = get_arg (esp, 1);
+      is_vaddr (esp+1);      
+      fd = *(esp+1);
       sys_close (fd);            
       break;
     /* finished */
 
     default:
       sys_exit(-1);
+      break;
   }
 }
 
@@ -223,6 +234,7 @@ static bool
 sys_create (const char *file, unsigned initial_size)
 {
   acquire_lock_file ();
+  printf(initial_size);
   return filesys_create(file, initial_size);
   release_lock_file ();
 
@@ -250,7 +262,7 @@ sys_open (const char *file)
   {
     return -1;
   }
-  struct loaded_file *opened_file = malloc(sizeof(struct loaded_file));
+  struct loaded_file *opened_file = (struct loaded_file *)malloc(sizeof(struct loaded_file));
   thread_current()->cur_fd ++;
   opened_file->fd = thread_current()->cur_fd;
   opened_file->file = target_file;
@@ -395,33 +407,36 @@ sys_close (int fd)
   }
 }
 
-static bool
+static void
 is_vaddr (const void* vaddr)
 {
   if (vaddr == NULL)
-    return false;
+    sys_exit (-1);
   
   if (!is_user_vaddr (vaddr))
-    return false;
+    sys_exit (-1);
   
   if (!is_user_vaddr (vaddr+4))
-    return false;
+    sys_exit (-1);
 
   if (!pagedir_get_page (thread_current ()->pagedir, vaddr))
-    return false;
+    sys_exit (-1);
   
   return true;
 }
 
 /* Check and return the no.offset argument */
-static uint32_t
+static uint32_t *
 get_arg (const uint32_t* p, int offset)
 {
-  p += (offset);
-  if (!is_vaddr (p))
-    sys_exit (-1);
+  is_vaddr (p);
 
-  return *(p);
+  p += (offset);
+
+  is_vaddr (p);
+
+
+  return p;
 }
 
 static struct loaded_file * 
