@@ -102,9 +102,7 @@ syscall_handler (struct intr_frame *f UNUSED)
       is_vaddr (esp+2);
       file = *(esp+1);
       size = *(esp+2);
-      acquire_lock_file ();
       bool_ret = sys_create ((char *) file, size);
-      release_lock_file ();
       f->eax = bool_ret;
       break;
     /* finished */
@@ -233,8 +231,10 @@ sys_wait (pid_t pid)
 static bool 
 sys_create (const char *file, unsigned initial_size)
 {
+  //printf("\n syscall create.\n\n");
   acquire_lock_file ();
   return filesys_create(file, initial_size);
+  //printf("\n syscall create2.\n\n");
   release_lock_file ();
 
 }
@@ -254,10 +254,8 @@ static int
 sys_open (const char *file)
 {
   acquire_lock_file ();
-  //printf("\n syscall open.\n\n");
   struct file *target_file = filesys_open((const char *)file);
   release_lock_file ();
-//printf("\n target_obtained.\n\n");
   if (!target_file)
   {
     return -1;
@@ -267,9 +265,7 @@ sys_open (const char *file)
   thread_current()->cur_fd ++;
   opened_file->fd = thread_current()->cur_fd;
   opened_file->file = target_file;
-//printf("\n before target push.\n\n");  
   list_push_back (&thread_current()->file_list,&opened_file->file_elem);
-//printf("\n target pushed.\n\n");  
   
   return opened_file->fd;
 
