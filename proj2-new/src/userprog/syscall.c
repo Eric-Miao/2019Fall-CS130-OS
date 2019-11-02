@@ -115,7 +115,7 @@ syscall_handler (struct intr_frame *f UNUSED)
       bool_ret = sys_remove ((char *) file);
       f->eax = bool_ret;
       break;
-
+      
     /* Open a file. */                
     case SYS_OPEN:       
       *file = get_arg(esp, 1);
