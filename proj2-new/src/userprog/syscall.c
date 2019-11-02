@@ -145,6 +145,8 @@ syscall_handler (struct intr_frame *f UNUSED)
       void* buffer1 = *(esp+2);
       size = *(esp+3);
 
+      is_vaddr (buffer1+size-4);
+
       int_ret = sys_read (fd, buffer1, size);
 
       f->eax = int_ret;
@@ -232,10 +234,10 @@ static bool
 sys_create (const char *file, unsigned initial_size)
 {
   //printf("\n syscall create.\n\n");
-  acquire_lock_file ();
+  //acquire_lock_file ();
   return filesys_create(file, initial_size);
   //printf("\n syscall create2.\n\n");
-  release_lock_file ();
+  //release_lock_file ();
 
 }
 
@@ -243,9 +245,9 @@ static bool
 sys_remove (const char *file)
 {
   bool ret;
-  acquire_lock_file ();
+  //acquire_lock_file ();
   ret = filesys_remove (file);
-  release_lock_file ();
+  //release_lock_file ();
   return ret;
 }
 
@@ -253,9 +255,9 @@ sys_remove (const char *file)
 static int 
 sys_open (const char *file)
 {
-  acquire_lock_file ();
+  //acquire_lock_file ();
   struct file *target_file = filesys_open((const char *)file);
-  release_lock_file ();
+  //release_lock_file ();
   if (!target_file)
   {
     return -1;
@@ -283,9 +285,9 @@ sys_filesize (int fd)
   target = search_file (fd);
   if (fd == target->fd)
   {
-    acquire_lock_file ();
+    //acquire_lock_file ();
     ret = file_length(target->file);
-    release_lock_file ();
+    //release_lock_file ();
   }
   else
     ret = -1;
@@ -313,9 +315,9 @@ sys_read (int fd, void *buffer, unsigned length)
     target = search_file (fd);
     if (target)
     {
-      acquire_lock_file ();
+      //acquire_lock_file ();
       ret = file_read(target->file, buffer, length);
-      release_lock_file ();
+      //release_lock_file ();
     }
     else
       ret = -1;
@@ -340,9 +342,9 @@ sys_write (int fd, const void *buffer, unsigned length)
     target = search_file (fd);
     if (target)
     {
-      acquire_lock_file ();
+      //acquire_lock_file ();
       ret = file_write(target->file, buffer, length);
-      release_lock_file ();
+      //release_lock_file ();
     }
     else
       ret = 0;
@@ -361,9 +363,9 @@ sys_seek (int fd, unsigned position)
   target = search_file (fd);
   if(target)  
   {
-    acquire_lock_file ();
+    //acquire_lock_file ();
     file_seek(target->file, position);
-    release_lock_file ();
+    //release_lock_file ();
   }    
 }
 
@@ -379,9 +381,9 @@ sys_tell (int fd)
   target = search_file (fd);
   if (target)
   {
-    acquire_lock_file ();
+    //acquire_lock_file ();
     ret = file_tell(target->file);
-    release_lock_file ();
+    //release_lock_file ();
   }
   else
     ret = -1;
@@ -399,9 +401,9 @@ sys_close (int fd)
   target = search_file (fd);
   if(target)
   {    
-    acquire_lock_file ();
+    //acquire_lock_file ();
     file_close(target->file);
-    release_lock_file ();
+    //release_lock_file ();
     list_remove (&target->file_elem);
     free(target);
   }
