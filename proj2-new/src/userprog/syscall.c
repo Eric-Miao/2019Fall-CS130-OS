@@ -50,18 +50,20 @@ static void
 syscall_handler (struct intr_frame *f UNUSED) 
 {
   uint32_t *esp = f->esp;
-  int syscall_no = (int) *esp;
   uint32_t exit_status;
   uint32_t size;
   uint32_t *command;
   uint32_t *file;
   int int_ret;
   int fd;
+  int syscall_no;
   bool bool_ret;
   pid_t pid;
 
   if(!is_vaddr (esp))
     sys_exit (-1);
+
+  syscall_no = (int) *esp;
 
   switch (syscall_no)
   {
@@ -181,6 +183,9 @@ syscall_handler (struct intr_frame *f UNUSED)
       sys_close (fd);            
       break;
     /* finished */
+
+    default:
+      sys_exit(-1);
   }
 }
 
@@ -217,7 +222,10 @@ sys_wait (pid_t pid)
 static bool 
 sys_create (const char *file, unsigned initial_size)
 {
+  acquire_lock_file ();
   return filesys_create(file, initial_size);
+  release_lock_file ();
+
 }
 
 static bool 
