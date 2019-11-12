@@ -44,6 +44,9 @@ process_execute (const char *file_name)
 
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (cmd, PRI_DEFAULT, start_process, fn_copy);
+
+  sema_down(&thread_current()->exec_sema);
+
   if (tid == TID_ERROR)
   {
     palloc_free_page (fn_copy); 
@@ -79,16 +82,16 @@ start_process (void *file_name_)
   if (!success) 
   {
     t->tid=-1;
-    sema_up(&t->exec_sema);
-    sema_down(&t->exec_sema);
+    sema_up(&t->parent->exec_sema);
+    /* sema_down(&t->exec_sema); */
     palloc_free_page (file_name);
 
     t->exit_status = -1;
     thread_exit ();
   }
 
-  sema_up(&t->exec_sema);   
-  sema_down(&t->exec_sema);
+  sema_up(&t->parent->exec_sema);   
+  /* sema_down(&t->exec_sema); */
   file_deny_write(t->FileSelf);
 
   char *esp=(char *)if_.esp;
