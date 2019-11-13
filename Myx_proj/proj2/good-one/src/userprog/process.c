@@ -72,6 +72,7 @@ start_process (void *file_name_)
   char *iter = NULL;
   struct thread *t = thread_current ();
 
+  passin = strtok_r (file_name, " ", &iter);
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
@@ -81,13 +82,13 @@ start_process (void *file_name_)
   t->FileSelf=filesys_open(passin);
 
   success = load (file_name, &if_.eip, &if_.esp);
-  palloc_free_page (file_name);
 
   /* If load failed, quit. */
   if (!success) 
   {
     t->tid=-1;
     thread_current()->parent->if_child_success=false;
+    printf("\n\n I am here\n\n\n");
 
     sema_up(&t->parent->exec_sema);
     /* sema_down(&t->exec_sema); */

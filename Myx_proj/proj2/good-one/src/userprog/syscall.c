@@ -219,29 +219,31 @@ sys_exit (int status)
 static pid_t 
 sys_exec (const char *file)
 {
+/*   return process_execute(file);
+ */  
   acquire_lock_file();
 	char * file_cp = malloc (strlen(file)+1);
-	  strlcpy(file_cp, file, strlen(file)+1);
-	  
-	  char * save_ptr;
-	  file_cp = strtok_r(file_cp," ",&save_ptr);
+  strlcpy(file_cp, file, strlen(file)+1);
+  
+  char * save_ptr;
+  file_cp = strtok_r(file_cp," ",&save_ptr);
 
-	  struct file* f = filesys_open (file_cp);
+  struct file* f = filesys_open (file_cp);
 
-	  if(f==NULL)
-	  {
-	  	release_lock_file();
-      free(file_cp);
-	  	return -1;
-	  }
-	  else
-	  {
-	  	file_close(f);
-	  	release_lock_file();
-      pid_t ret = process_execute(file);
-      return ret;
-	  }
-  /* return process_execute (file); */
+  if(f==NULL)
+  {
+    release_lock_file();
+    free(file_cp);
+    return -1;
+  }
+  else
+  {
+    file_close(f);
+    release_lock_file();
+    pid_t ret = process_execute(file);
+    return ret;
+  }
+  
 }
 
 static int 
