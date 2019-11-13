@@ -219,9 +219,9 @@ sys_exit (int status)
 static pid_t 
 sys_exec (const char *file)
 {
-/*   return process_execute(file);
- */  
-  acquire_lock_file();
+  return process_execute(file);
+  
+/*   acquire_lock_file();
 	char * file_cp = malloc (strlen(file)+1);
   strlcpy(file_cp, file, strlen(file)+1);
   
@@ -240,11 +240,10 @@ sys_exec (const char *file)
   {
     file_close(f);
     release_lock_file();
-    pid_t ret = process_execute(file);
-    return ret;
+    return process_execute(file);
   }
   
-}
+ */}
 
 static int 
 sys_wait (pid_t pid)
