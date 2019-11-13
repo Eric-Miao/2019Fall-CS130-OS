@@ -97,20 +97,23 @@ struct thread
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
-#endif
-
+    
     /* Proj2 */
     int exit_status;                    /* Record the status of exit. */
     int cur_fd;                         /* The next fd assigned to file. */
-    bool bingwaited;                    /* Indicate twice waiting in exit. */
-    bool ifsaved;                       /* Indicate if thread has returned. */
+    bool bingwaited;                    /* If twice waiting in exit. */
+    bool ifreturned;                    /* If thread has returned. */
+    bool if_child_success;              /* If child has been started */
     struct thread *parent;              /* My parent that called me. */
     struct list sons_ret;               /* List to store the struct sons. */
     struct list file_list;              /* Store the opened list. */
-    struct semaphore wait_sema;              /* Sync for process_wait. */
-    struct semaphore exec_sema;              /* Sync for process_exec. */
+    struct semaphore wait_sema;         /* Sync for process_wait. */
+    struct semaphore exec_sema;         /* Sync for process_exec. */
 
     struct file *FileSelf;              /* Use for deny writing. */
+
+#endif
+
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
 
@@ -121,6 +124,7 @@ struct thread
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 
+#ifdef USERPROG
 /* The struct to store a file's basic infomation. */
 struct loaded_file
 {
@@ -136,7 +140,7 @@ struct son
   int exit_status;
   struct list_elem sonelem;
 };
-
+#endif
 /*  */
 
 extern bool thread_mlfqs;
@@ -174,8 +178,9 @@ int thread_get_load_avg (void);
 
 
 /* Proj2 */
+#ifdef USERPROG
 void acquire_lock_file ();
 void release_lock_file ();
 struct thread *GetThreadFromTid (tid_t);
-
+#endif
 #endif /* threads/thread.h */

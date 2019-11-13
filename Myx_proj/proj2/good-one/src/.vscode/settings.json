@@ -2,6 +2,7 @@
     "files.associations": {
         "palloc.h": "c",
         "main.h": "c",
-        "lib.h": "c"
+        "lib.h": "c",
+        "process.h": "c"
     }
 }

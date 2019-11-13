@@ -32,25 +32,30 @@ process_execute (const char *file_name)
   tid_t tid;
   char *save_ptr;
   char *cmd;
-  /* Make a copy of FILE_NAME.
-     Otherwise there's a race between the caller and load(). */
+
   fn_copy = palloc_get_page (0);
+  
   if (fn_copy == NULL)
     return TID_ERROR;
-  
+
   strlcpy (fn_copy, file_name, PGSIZE);
 
-  cmd = strtok_r (file_name, " ", &save_ptr);
+  cmd = malloc(strlen(file_name)+1);
+  strlcpy (cmd, file_name, strlen(file_name)+1);
+
+  cmd = strtok_r (cmd, " ", &save_ptr);
 
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create (cmd, PRI_DEFAULT, start_process, fn_copy);
+  free(cmd);
+  
+  if (tid == TID_ERROR)
+    palloc_free_page (fn_copy); 
 
   sema_down(&thread_current()->exec_sema);
 
-  if (tid == TID_ERROR)
-  {
-    palloc_free_page (fn_copy); 
-  }
+  if(!thread_current()->if_child_success)
+    return -1;
 
   return tid;
 }
@@ -65,34 +70,40 @@ start_process (void *file_name_)
   bool success;
   char *passin;
   char *iter = NULL;
+  struct thread *t = thread_current ();
 
-  passin = strtok_r (file_name, " ", &iter);
   /* Initialize interrupt frame and load executable. */
   memset (&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
 
-  struct thread *t = thread_current ();
   t->FileSelf=filesys_open(passin);
 
-  success = load (passin, &if_.eip, &if_.esp);
+  success = load (file_name, &if_.eip, &if_.esp);
+  palloc_free_page (file_name);
 
   /* If load failed, quit. */
   if (!success) 
   {
     t->tid=-1;
+    thread_current()->parent->if_child_success=false;
+
     sema_up(&t->parent->exec_sema);
     /* sema_down(&t->exec_sema); */
     palloc_free_page (file_name);
-
     t->exit_status = -1;
     thread_exit ();
   }
-
-  sema_up(&t->parent->exec_sema);   
-  /* sema_down(&t->exec_sema); */
+  else
+  {
+    thread_current()->parent->if_child_success=true;
+    sema_up(&t->parent->exec_sema);   
+    /* sema_down(&t->exec_sema); */
+  }
+  
   file_deny_write(t->FileSelf);
+
 
   char *esp=(char *)if_.esp;
   char *arg[256];               
@@ -148,7 +159,7 @@ process_wait (tid_t child_tid)
 
   int ret;
   struct thread *t=GetThreadFromTid(child_tid);
-  if (t == NULL || t->status == THREAD_DYING || t->ifsaved)  
+  if (t == NULL || t->status == THREAD_DYING || t->ifreturned)  
   {
       ret = -1;
       ret = GetRetFromSonsList(thread_current(),child_tid);  
@@ -204,7 +215,7 @@ process_exit (void)
       printf("%s: exit(%d)\n", cur->name, cur->exit_status);
 
       record_ret (cur->parent, cur->tid, cur->exit_status);
-      cur->ifsaved = true;
+      cur->ifreturned = true;
       if (cur->parent != NULL && cur->bingwaited)
       {
         while (!list_empty(&cur->parent->wait_sema.waiters))

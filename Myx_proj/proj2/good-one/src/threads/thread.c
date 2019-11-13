@@ -37,8 +37,10 @@ static struct thread *initial_thread;
 /* Lock used by allocate_tid(). */
 static struct lock tid_lock;
 
+#ifdef USERPROG
 /* Lock used by operating on file system. */
-static struct lock file_lock;
+struct lock file_lock;
+#endif
 
 /* Stack frame for kernel_thread(). */
 struct kernel_thread_frame 
@@ -481,10 +483,11 @@ init_thread (struct thread *t, const char *name, int priority)
 
   /* proj2 */
   t->exit_status = 0;
+  t->cur_fd = 2;
   t->parent = NULL;
   t->bingwaited = false;
-  t->cur_fd = 2;
-  t->ifsaved = false;
+  t->ifreturned = false;
+  t->if_child_success = false;
   t->FileSelf = NULL;
   list_init (&t->file_list);
   list_init (&t->sons_ret);
@@ -611,8 +614,9 @@ allocate_tid (void)
    Used by switch.S, which can't figure it out on its own. */
 uint32_t thread_stack_ofs = offsetof (struct thread, stack);
 
-/* Proj2 */
 
+/* Proj2 */
+#ifdef USERPROG
 /* acquire the lock for filesys globally */
 void
 acquire_lock_file()
@@ -646,3 +650,4 @@ struct thread *GetThreadFromTid(tid_t tid)
     intr_set_level(old_level);
     return NULL;
 }
+#endif

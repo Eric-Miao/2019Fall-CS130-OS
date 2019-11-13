@@ -145,8 +145,6 @@ syscall_handler (struct intr_frame *f UNUSED)
       void* buffer1 = *(esp+2);
       size = *(esp+3);
 
-      is_vaddr (buffer1+size-4);
-
       int_ret = sys_read (fd, buffer1, size);
 
       f->eax = int_ret;
@@ -221,7 +219,29 @@ sys_exit (int status)
 static pid_t 
 sys_exec (const char *file)
 {
-  return process_execute (file);
+  acquire_lock_file();
+	char * file_cp = malloc (strlen(file)+1);
+	  strlcpy(file_cp, file, strlen(file)+1);
+	  
+	  char * save_ptr;
+	  file_cp = strtok_r(file_cp," ",&save_ptr);
+
+	  struct file* f = filesys_open (file_cp);
+
+	  if(f==NULL)
+	  {
+	  	release_lock_file();
+      free(file_cp);
+	  	return -1;
+	  }
+	  else
+	  {
+	  	file_close(f);
+	  	release_lock_file();
+      pid_t ret = process_execute(file);
+      return ret;
+	  }
+  /* return process_execute (file); */
 }
 
 static int 
@@ -297,6 +317,8 @@ sys_filesize (int fd)
 static int 
 sys_read (int fd, void *buffer, unsigned length)
 {
+  is_vaddr(buffer+length);
+
   struct loaded_file *target =NULL;
   int ret = -1;
   uint8_t *_buffer = buffer;
@@ -328,6 +350,8 @@ sys_read (int fd, void *buffer, unsigned length)
 static int 
 sys_write (int fd, const void *buffer, unsigned length)
 {
+  is_vaddr(buffer+length);
+
   struct loaded_file *target =NULL;
   int ret;
 
@@ -418,13 +442,13 @@ is_vaddr (const void* vaddr)
   if (!is_user_vaddr (vaddr))
     sys_exit (-1);
   
-  if (!is_user_vaddr (vaddr+4))
-    sys_exit (-1);
+/*   if (!is_user_vaddr (vaddr+4))
+    sys_exit (-1); */
 
   if (!pagedir_get_page (thread_current ()->pagedir, vaddr))
     sys_exit (-1);
   
-  return true;
+ /* return true; */
 }
 
 /* Check and return the no.offset argument */
