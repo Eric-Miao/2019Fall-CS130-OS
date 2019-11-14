@@ -27,14 +27,6 @@ static tid_t target_tid;
 /*global variable to sore the target thread*/
 static struct thread *target_t;
 static void search_thread(struct thread *t, void *aux);
-/*struct to store the info of terminated child thread*/
-struct last_words
-{
-  int tid;
-  int code;
-  struct list_elem ele;
-};
-
 struct file_to_fd
 {
   int f_des;               /*file descriptor*/
@@ -69,31 +61,25 @@ tid_t process_execute(const char *file_name)
   /*create a new string to store the program name*/
   char *save_ptr;
   char *name;
+  struct thread *cur = thread_current();
   /*strtok_r() refer to 'lib/string.c' line235*/
   name = strtok_r((char *)file_name, " ", &save_ptr);
   if (name == NULL)
   {
-    return TID_ERROR; /*attention*/
+    return TID_ERROR;
   }
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create(name, PRI_DEFAULT, start_process, fn_copy);
-  
   if (tid == TID_ERROR)
   {
     palloc_free_page(fn_copy);
   }
-  else
-  {
-    target_tid = tid;
-    enum intr_level old_level = intr_disable();
-    struct thread *curr = thread_current();
-    /*store the newly created thread in the current thread children list*/
-    thread_foreach(*search_thread, NULL);
-    list_push_front(&curr->children, &target_t->children_elem);
-    target_t->parent = curr;
-    target_t->is_waiting = 0;
-    intr_set_level(old_level);
-  }
+  /*let current thread wait for child thread to finish loading*/
+  sema_down(&thread_current()->waiting_parent);
+  /*loading failed*/
+  if (thread_current()->success == 0)
+    tid = -1;
+
   return tid;
 }
 
@@ -104,7 +90,7 @@ start_process(void *file_name_)
 {
   char *file_name = file_name_;
   struct intr_frame if_;
-  int load_status;
+  /*int load_status;*/
   bool success;
   /* Initialize interrupt frame and load executable. */
   memset(&if_, 0, sizeof if_);
@@ -113,30 +99,23 @@ start_process(void *file_name_)
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load(file_name, &if_.eip, &if_.esp);
   struct thread *curr = thread_current();
-  /*printf("success : %d\n",success);*/
+  palloc_free_page(file_name);
   if (!success)
   {
-    load_status = -1;
+    /*if loading failed send a signal to parent*/
+    curr->parent->success = 0;
+    /*wake up parent that is waiting*/
+    sema_up(&curr->parent->waiting_parent);
+    /*terminate the fail child process*/
+    thread_exit();
   }
   else
   {
-    load_status = 1;
+    /*if loading succeed send a signal to parent*/
+    curr->parent->success = 1;
+    /*wake up parent that is waiting*/
+    sema_up(&curr->parent->waiting_parent);
   }
-  if (curr->parent != NULL)
-  {
-    curr->parent->load_status = load_status;
-  }
-  if (!success)
-  {
-    palloc_free_page(file_name);
-    curr->tid = -1;
-    thread_current()->exitcode = -1;
-    thread_exit();
-  }
- else
- {
-   sema_up(&curr->Wait_multiexec);
- }
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
      threads/intr-stubs.S).  Because intr_exit takes all of its
@@ -144,7 +123,6 @@ start_process(void *file_name_)
      we just point the stack pointer (%esp) to our stack frame
      and jump to it. */
   /* If load failed, quit. */
-  palloc_free_page(file_name);
   asm volatile("movl %0, %%esp; jmp intr_exit"
                :
                : "g"(&if_)
@@ -163,9 +141,11 @@ start_process(void *file_name_)
    does nothing. */
 int process_wait(tid_t child_tid UNUSED)
 {
-  /*the child thread is going to be wait for*/
+  /*temp to store the element when going through*/
   struct list_elem *temp;
-  struct thread *child;
+  struct list_elem *temp_1;
+  /*message of child thread*/
+  struct last_words *last;
   struct thread *curr = thread_current();
   /*if there is no children*/
   if (list_empty(&curr->children))
@@ -173,60 +153,36 @@ int process_wait(tid_t child_tid UNUSED)
     /*no need to wait*/
     return -1;
   }
-  temp = list_tail(&curr->children);
+  temp = list_begin(&curr->children);
   /*search if the thread given is the child of current process*/
-  while ((temp = list_prev(temp)) != list_head(&curr->children))
+  while (temp != list_end(&curr->children))
   {
-    child = list_entry(temp, struct thread, children_elem);
-    if (child->tid == child_tid)
+    struct last_words *words = list_entry(temp, struct last_words, ele);
+    /*store the target child process into the message passing station*/
+    if (words->tid == child_tid)
     {
-      break;
+      last = words;
+      temp_1 = temp;
     }
+    temp = list_next(temp);
   }
   /*if it's not a child of the calling process*/
-  /*if the child thread terminated*/
-  if (child == NULL || child->status == THREAD_DYING || child->finish == 1)
+  if (last == NULL || temp_1 == NULL)
   {
-    int sta = -1;
-    struct list_elem *temp_e = list_begin(&curr->children_finished);
-    while (temp_e != list_end(&curr->children_finished))
-    {
-      struct last_words *lw = list_entry(temp_e, struct last_words, ele);
-      {
-        if (lw->tid == child_tid)
-        {
-          sta = lw->code;
-          lw->code = -1;
-          break;
-        }
-      }
-      temp_e = list_next(temp_e);
-    }
-    return sta;
+    return -1;
   }
-  child->is_waiting = 1;
+  /*let parent know which child it is waiting for*/
+  curr->is_waiting = last->tid;
+  /*if the child is not terminated*/
+  if (last->running == 0)
+  {
+    /*put the current thread to wait(sleep)*/
+    sema_down(&curr->waiting_parent);
+  }
   /*remove given thread from children list to avoid calling repeatedly*/
-  list_remove(&child->children_elem);
-  /*put the current thread to wait(sleep)*/
-  sema_down(&child->parent->waiting_parent);
-  /*return the status of children thread*/
-  int sta = -1;
-  curr = thread_current();
-  struct list_elem *temp_e = list_begin(&curr->children_finished);
-  while (temp_e != list_end(&curr->children_finished))
-  {
-    struct last_words *lw = list_entry(temp_e, struct last_words, ele);
-    {
-      if (lw->tid == child_tid)
-      {
-        sta = lw->code;
-        lw->code = -1;
-        break;
-      }
-    }
-    temp_e = list_next(temp_e);
-  }
-  return sta;
+  int ret = last->code;
+  list_remove(temp_1);
+  return ret;
 }
 
 /* Free the current process's resources. */
@@ -234,6 +190,42 @@ void process_exit(void)
 {
   struct thread *cur = thread_current();
   uint32_t *pd;
+  struct list_elem *temp;
+  /*save the message of process that to be terminated*/
+  temp = list_begin(&cur->parent->children);
+  while (temp != list_end(&cur->parent->children))
+  {
+    struct last_words *l_w = list_entry(temp, struct last_words, ele);
+    if (l_w->tid == cur->tid)
+    {
+      /*set status to terminated*/
+      l_w->running = 1;
+      /*save exitcode*/
+      l_w->code = cur->exitcode;
+    }
+    temp = list_next(temp);
+  }
+  /*if there is parent waiting wake it up*/
+  if (cur->parent->is_waiting == cur->tid)
+  {
+    sema_up(&cur->parent->waiting_parent);
+  }
+  /*Process Termination Messages*/
+  printf("%s: exit(%d)\n", cur->name, cur->exitcode);
+  /*close the files*/
+  while (!list_empty(&cur->file_des))
+  {
+    struct file_to_fd *lk = list_entry(list_pop_front(&cur->file_des), struct file_to_fd, f_list);
+    file_close(lk->f_addr_ptr);
+    free(lk);
+  }
+  cur->curr_fd = 0;
+  /*re-enable the file to be written*/
+  if (cur->FILE != NULL)
+  {
+    file_allow_write(cur->FILE);
+    file_close(cur->FILE);
+  }
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
@@ -246,44 +238,6 @@ void process_exit(void)
          directory before destroying the process's page
          directory, or our active page directory will be one
          that's been freed (and cleared). */
-    struct list_elem *a;
-    struct list_elem *b;
-    while (!list_empty(&cur->file_des))
-    {
-      struct file_to_fd *lk = list_entry(list_pop_front(&cur->file_des), struct file_to_fd, f_list);
-      file_close(lk->f_addr_ptr);
-      free(lk);
-    }
-    cur->curr_fd = 0;
-    if (cur->FILE != NULL)
-    {
-      file_allow_write(cur->FILE);
-      file_close(cur->FILE);
-    }
-    /*Process Termination Messages*/
-    printf("%s: exit(%d)\n", cur->name, cur->exitcode);
-    struct last_words *temp = (struct last_words *)malloc(sizeof(struct last_words));
-    temp->tid = cur->tid;
-    temp->code = cur->exitcode;
-    list_push_front(&cur->parent->children_finished, &temp->ele);
-    cur->finish = 1;
-    if(cur->parent != NULL)
-    {
-      if (cur->parent->load_status == 0)
-        cur->parent->load_status = -1;
-    }
-    if (cur->parent != NULL && cur->is_waiting)
-    {
-      while (!list_empty(&cur->parent->waiting_parent.waiters))
-      {
-        sema_up(&cur->parent->waiting_parent);
-      }
-    }
-    while (!list_empty(&cur->children_finished))
-    {
-      struct last_words *lw = list_entry(list_pop_front(&cur->children_finished), struct last_words, ele);
-      free(lw);
-    }
     cur->pagedir = NULL;
     pagedir_activate(NULL);
     pagedir_destroy(pd);

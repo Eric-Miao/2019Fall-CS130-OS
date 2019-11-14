@@ -116,7 +116,7 @@ syscall_handler(struct intr_frame *f UNUSED)
     /*send physical page pointer back to args*/
     args[0] = (int)physical_page;
     /*store the return value of API function(exec() for now) in extended accumulator registor*/
-    exec((const char *)args[0],f);
+    f->eax = exec((const char *)args[0]);
   }
   /*if syscall is wait*/
   if (*(int *)f->esp == SYS_WAIT)
@@ -338,41 +338,22 @@ int write(int fd, const void *buffer, unsigned size)
 }
 
 /*runs the executable whose name is given in cmd_line*/
-void exec(const char *file,struct intr_frame *f)
+int exec(const char *file)
 {
   /*if the exec file is null*/
   if (file == NULL)
   {
-    f->eax = -1;
-    return;
+    return -1;
   }
-  /*run and get new process id*/
+  /*declare a new variable to store file as a temp*/
   char *newfile = (char *)malloc(sizeof(char) * (strlen(file) + 1));
   memcpy(newfile, file, strlen(file) + 1);
+  lock_acquire(&lock_f);
+  /*run and get new process id*/
   pid_t child_tid = process_execute(newfile);
-  struct thread *t_child;
-  struct thread *curr = thread_current();
-  struct list_elem *temp = list_front(&curr->children);
-  /*search if the thread given is the child of current process*/
-  while (temp != NULL)
-  {
-    struct thread *t = list_entry(temp, struct thread, children_elem);
-    if (t->tid == child_tid)
-    {
-      t_child = t;
-      break;
-    }
-    temp = temp->next;
-  }
-  /*printf("current load: %d\nparent load: %d\n",curr->load_status,t_child->parent->load_status);*/
-  sema_down(&curr->Wait_multiexec);
-  if(t_child->parent->load_status == -1)
-  {
-    child_tid = -1;
-  }
-  f->eax = child_tid;
+  lock_release(&lock_f);
   free(newfile);
-  sema_up(&curr->Wait_multiexec);
+  return child_tid;
 }
 
 /*waits for a child process pid and retrieves the child's exit status*/

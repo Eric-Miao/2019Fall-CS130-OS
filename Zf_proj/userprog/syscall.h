@@ -11,7 +11,7 @@ typedef int pid_t;
 void syscall_init(void);
 void halt(void);
 void exit(int status);
-void exec(const char *file, struct intr_frame *f);
+int exec(const char *file);
 int wait(pid_t PID);
 bool create(const char *file, unsigned initial_size);
 bool remove(const char *file);

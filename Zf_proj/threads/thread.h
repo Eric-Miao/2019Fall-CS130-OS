@@ -138,24 +138,29 @@ struct thread
     uint32_t *pagedir;                  /* Page directory. */
     int curr_fd;                         /*store the current file descriptor*/
     int exitcode;                       /*save the threads exit code*/
-    int finish;                         /*to see if child thread we are waiting is finished*/
     int is_waiting;                      /*to see if current thread is waiting*/ 
-    int load_status;                     /*check if the current thread's file is successfully loaded*/
-    bool success;                         
+    int success;                         /*thread is successfully loaded or not*/
     struct file *FILE;                   /*store the current open file*/
     struct list file_des;               /*list of file descriptor of thread*/
     struct list children;               /*list store the children of current thread*/
-    struct list children_finished;       /*store the info of children finished*/
     struct list f_list;                   /*also store the file*/
     struct thread *parent;              /*the parent of current thread*/
     struct list_elem children_elem;     /*store the element in children list*/
     struct semaphore waiting_parent;  /*put parent to sleep when waiting for children*/
-    struct semaphore Wait_multiexec;    /*wait semaphore when doing*/
 #endif
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
   };
+
+/*struct to store the info of terminated child thread*/
+struct last_words
+{
+  int tid;
+  int code;
+  struct list_elem ele;
+  int running;                  /*termination status*/
+};
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */

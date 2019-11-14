@@ -249,8 +249,13 @@ tid_t thread_create(const char *name, int priority,
   /* Initialize thread. */
   init_thread(t, name, priority);
   tid = t->tid = allocate_tid();
+  struct last_words* lw = malloc(sizeof(*lw));
+  lw->tid = tid;
+  lw->code = t->exitcode;
+  lw->running = 0;
+  list_push_back (&running_thread()->children, &lw->ele);
 
-  old_level = intr_disable ();
+  old_level = intr_disable();
   /* Stack frame for kernel_thread(). */
   kf = alloc_frame(t, sizeof *kf);
   kf->eip = NULL;
@@ -265,7 +270,7 @@ tid_t thread_create(const char *name, int priority,
   sf = alloc_frame(t, sizeof *sf);
   sf->eip = switch_entry;
   sf->ebp = 0;
-  intr_set_level (old_level);
+  intr_set_level(old_level);
   /* Add to run queue. */
   thread_unblock(t);
   /*get the current running thread*/
@@ -389,7 +394,7 @@ void thread_unblock(struct thread *t)
   ASSERT(t->status == THREAD_BLOCKED);
   /*given element and position if element has higher priority then will be insert in front of position*/
   /*list_insert_ordered(&ready_list, &t->elem, (list_less_func *)&is_priority_less, NULL);*/
-  list_push_back (&ready_list, &t->elem);
+  list_push_back(&ready_list, &t->elem);
   t->status = THREAD_READY;
   intr_set_level(old_level);
 }
@@ -432,8 +437,8 @@ void thread_exit(void)
 {
   ASSERT(!intr_context());
   /*tell the parent stop waiting*/
-  struct thread *curr = thread_current();
-  sema_up(&curr->waiting_parent);
+  /*struct thread *curr = thread_current();*/
+  /*sema_up(&curr->waiting_parent);*/
 
 #ifdef USERPROG
   process_exit();
@@ -442,6 +447,11 @@ void thread_exit(void)
   /* Remove thread from all threads list, set our status to dying,
      and schedule another process.  That process will destroy us
      when it calls thread_schedule_tail(). */
+  while (!list_empty(&thread_current()->children))
+  {
+    struct file_to_fd *f = list_entry(list_pop_front(&thread_current()->children), struct last_words, ele);
+    free(f);
+  }
   intr_disable();
   list_remove(&thread_current()->allelem);
   thread_current()->status = THREAD_DYING;
@@ -461,7 +471,7 @@ void thread_yield(void)
   old_level = intr_disable();
   if (cur != idle_thread)
     /*list_insert_ordered(&ready_list, &cur->elem, (list_less_func *)&is_priority_less, NULL);*/
-    list_push_back (&ready_list, &cur->elem);
+    list_push_back(&ready_list, &cur->elem);
   cur->status = THREAD_READY;
   schedule();
   intr_set_level(old_level);
@@ -650,21 +660,17 @@ init_thread(struct thread *t, const char *name, int priority)
   /*initiate the file descriptor by 2
   0 is STDIN and 1 is STDOUT*/
   t->curr_fd = 2;
-  list_init(&t->children_finished);
-  t->finish = 0;
-  t->parent = NULL;
+  /*let the first thread be the parent of itself*/
+  t->parent = running_thread();
   t->is_waiting = 0;
-  t->load_status = 0;
   /*initiate the waiting parent to 0*/
   sema_init(&t->waiting_parent, 0);
-  sema_init(&t->Wait_multiexec, 0);
   /*initiate exit status with unexpect situation*/
   t->exitcode = -1;
-
   /*old_level = intr_disable();
   list_insert_ordered(&all_list, &t->allelem, (list_less_func *)&is_priority_less, NULL);
   intr_set_level(old_level);*/
-  list_push_back (&all_list, &t->allelem);
+  list_push_back(&all_list, &t->allelem);
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and
@@ -778,18 +784,19 @@ allocate_tid(void)
 
 /* Get the thread by its tid */
 struct thread
-*thread_get_by_id (tid_t id)
+    *
+    thread_get_by_id(tid_t id)
 {
-  ASSERT (id != TID_ERROR);
+  ASSERT(id != TID_ERROR);
   struct list_elem *e;
   struct thread *t;
-  e = list_tail (&all_list);
-  while ((e = list_prev (e)) != list_head (&all_list))
-    {
-      t = list_entry (e, struct thread, allelem);
-      if (t->tid == id && t->status != THREAD_DYING)
-        return t;
-    }
+  e = list_tail(&all_list);
+  while ((e = list_prev(e)) != list_head(&all_list))
+  {
+    t = list_entry(e, struct thread, allelem);
+    if (t->tid == id && t->status != THREAD_DYING)
+      return t;
+  }
   return NULL;
 }
 
