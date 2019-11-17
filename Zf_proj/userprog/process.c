@@ -213,10 +213,13 @@ void process_exit(void)
   /*Process Termination Messages*/
   printf("%s: exit(%d)\n", cur->name, cur->exitcode);
   /*close the files*/
+  struct list_elem *el;
   while (!list_empty(&cur->file_des))
   {
-    struct file_to_fd *lk = list_entry(list_pop_front(&cur->file_des), struct file_to_fd, f_list);
+    el = list_pop_front(&cur->file_des);
+    struct file_to_fd *lk = list_entry(el, struct file_to_fd, f_list);
     file_close(lk->f_addr_ptr);
+    list_remove(el);
     free(lk);
   }
   cur->curr_fd = 0;
