@@ -1,3 +1,53 @@
+***************************
+11.19
+frame table
+    keep track of the frems used by user
+    record the stauts 
+
+only address info
+no virtual memory managment
+
+supplymental page table
+    record the pages that should be in the physical memory but not actually
+
+    page fault
+        lookup supplymental page table
+    free the resources
+
+pre-load
+    load_segment
+    get_frame, file_read()
+
+lazy-load
+    load_segment_lazy
+    SPT operation take down the need.
+
+page fault
+    if should be loaded
+    kill
+
+swap table
+    old into disk
+    new into physical memory
+
+    swap out
+        no availabe page, evict one.
+        find a free sector.
+        cut out map fro
+            pagedir_clear_page
+            block_write
+        return empty frame
+    swap in
+        find the page in swap sector.
+        re-establish the map
+            pagedir_set_page
+
+mmap
+    
+munmap
+
+
+
 ****************************
 **    proj3 reference     **
 ****************************
