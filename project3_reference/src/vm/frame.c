@@ -34,7 +34,6 @@ frame_init (void)
       f->page = NULL;
     }
 }
-
 /* Tries to allocate and lock a frame for PAGE.
    Returns the frame if successful, false on failure. */
 static struct frame *
