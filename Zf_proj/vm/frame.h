@@ -4,7 +4,6 @@
 #include "threads/thread.h"
 #include "lib/kernel/list.h"
 #include "threads/synch.h"
-#include "vm/pages.h"
 
 #include <stdbool.h>
 struct frame
