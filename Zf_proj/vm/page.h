@@ -20,3 +20,16 @@ struct page
     off_t offset;          /* offset of file */
     off_t bytes;           /* read (write) bytes */
   };
+
+void page_table_free(void);
+void page_eviction(void *addr);
+struct page *page_allocate (void *addr, bool writabel);
+struct page *page_search(const void *address);
+bool page_in(struct page *p);
+bool page_out (struct page *p);
+bool page_accessed_recently(struct page *p);
+bool page_lock(const void *addr, bool write);
+void page_unlock(const void *addr);
+hash_hash_func page_number;
+hash_less_func page_less;
+#endif

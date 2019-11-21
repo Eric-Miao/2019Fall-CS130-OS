@@ -1,4 +1,4 @@
-#ifndef THREADS_THREAD_H
+ #ifndef THREADS_THREAD_H
 #define THREADS_THREAD_H
 
 #include <debug.h>
@@ -133,6 +133,7 @@ struct thread
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
     struct hash *page_table;                 /* supplemental page table */
+    void *uesp;                     /* stack pointer of user thread */
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
