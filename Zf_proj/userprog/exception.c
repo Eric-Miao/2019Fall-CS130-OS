@@ -12,6 +12,9 @@ static long long page_fault_cnt;
 static void kill (struct intr_frame *);
 static void page_fault (struct intr_frame *);
 
+/* Myx: For easy use, define the bottom of user stack. */
+#define STACK_BOTTOM 0x08048000
+
 /* Registers handlers for interrupts that can be caused by user
    programs.
 
@@ -127,6 +130,7 @@ page_fault (struct intr_frame *f)
   bool write;        /* True: access was write, false: access was read. */
   bool user;         /* True: access by user, false: access by kernel. */
   void *fault_addr;  /* Fault address. */
+  void *fault_page;  /* Fault page for the fault_addr. */
 
   /* Obtain faulting address, the virtual address that was
      accessed to cause the fault.  It may point to code or to
@@ -148,11 +152,43 @@ page_fault (struct intr_frame *f)
   not_present = (f->error_code & PF_P) == 0;
   write = (f->error_code & PF_W) != 0;
   user = (f->error_code & PF_U) != 0;
-  if(not_present||(is_kernel_vaddr(fault_addr)&&user))
+
+
+  /* Myx: Keep the old exceptions and reconstruct a new one.
+  if ((is_kernel_vaddr(fault_addr) && user) || !write)
   {
      struct thread *curr = thread_current();
      curr->exitcode = -1;
      thread_exit();
+  }
+
+  if (user && not_present )
+  {
+
+  } 
+  */
+
+  /* Myx: Round down to the nearest virtual page base if needed. */
+  //fault_page = pg_round_down(fault_addr);
+  if (user)
+  {
+    if (is_kernel_vaddr(fault_addr) || !write || 
+        (fault_addr < STACK_BOTTOM && is_user_vaddr(fault_addr)))
+    {
+      thread_current()->exitcode = -1;
+      thread_exit();
+    }
+
+    if (not_present)
+    {
+      if (!page_in(fault_addr))
+      {
+        thread_current()->exitcode = -1;
+        thread_exit();
+      }
+    }
+    
+    return;
   }
   /* To implement virtual memory, delete the rest of the function
      body, and replace it with code that brings in the page to

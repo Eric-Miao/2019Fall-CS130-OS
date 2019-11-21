@@ -1,5 +1,7 @@
 {
     "files.associations": {
-        "bitmap.h": "c"
+      "bitmap.h": "c",
+      "thread.h": "c",
+      "vaddr.h": "c"
     }
 }
