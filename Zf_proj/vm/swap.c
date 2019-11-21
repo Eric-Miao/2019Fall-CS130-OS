@@ -35,12 +35,12 @@ swap_init()
         swap_bitmap = bitmap_create(swap_size);
         if(!swap_bitmap)
         {
-            printf("swap bitmap creation failed.\n")
+            printf("Swap bitmap creation failed. Function without swap block\n")
         }
     }
     else
     {
-        printf("swap initialization failed.\n");
+        printf("Swap initialization failed.\n");
     }
 
 }
