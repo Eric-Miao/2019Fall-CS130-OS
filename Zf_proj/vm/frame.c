@@ -6,6 +6,7 @@
 #include "userprog/pagedir.h"
 #include "threads/pte.h"
 #include "vm/frame.h"
+#include "vm/page.h"
 
 /* Use list to implement frame table, nodes as entries. */
 static struct list frame_table;
@@ -17,7 +18,7 @@ static struct lock frame_table_lock;
 static size_t clock_loop;
 
 /* Initialize the whole frame system. */
-void 
+void *
 frame_init()
 {
     list_init(&frame_table);
@@ -26,11 +27,11 @@ frame_init()
     void *phys_mem = palloc_get_page(PAL_USER);
     while (phys_mem != NULL)
     {
-        struct frame *new_frame = malloc(sizeof(stuct frame));
+        struct frame *new_frame = malloc(sizeof(struct frame));
         new_frame->ker_base = phys_mem;
         new_frame->page = NULL;
-        lock_init(new_frame->frame_lock);
-        list_push_back(&frame_table, &new_frame->frame_elem);
+        lock_init(&new_frame->frame_lock);
+        list_push_back(&frame_table, &new_frame->fte);
         phys_mem = palloc_get_page(PAL_USER);
     }
 }
@@ -133,7 +134,7 @@ frame_evict(struct page *p)
             
         if (f->page == NULL)
         {
-            f->page = page;
+            f->page = p;
             lock_release(&frame_table_lock);
             /* The page is mine now, no need to release the lock. */
             return f;
@@ -152,9 +153,9 @@ frame_evict(struct page *p)
             Otherwise return NULL */
         if (page_out(p))
         {
-            lock_release(&f->frame_table_lock);
+            lock_release(&frame_table_lock);
             /* The page is mine now, no need to release the lock. */
-            f->page = page;
+            f->page = p;
             return f;
         }
         /* page out fail */

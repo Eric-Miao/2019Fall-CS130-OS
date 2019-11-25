@@ -650,9 +650,6 @@ init_thread(struct thread *t, const char *name, int priority)
   t->original_priority = priority;
   t->nice = 0;
   t->recent_cpu = I_COV_F(0);
-  /*initial the possessed lock list*/
-  /*list_init(&t->locks);
-  t->stuck_lock = NULL;*/
   /*initiate the children list*/
   list_init(&t->children);
   /*initiate the file descriptor list*/
@@ -663,13 +660,16 @@ init_thread(struct thread *t, const char *name, int priority)
   /*let the first thread be the parent of itself*/
   t->parent = running_thread();
   t->is_waiting = 0;
+
   /*initiate the waiting parent to 0*/
   sema_init(&t->waiting_parent, 0);
   /*initiate exit status with unexpect situation*/
   t->exitcode = -1;
-  /*old_level = intr_disable();
-  list_insert_ordered(&all_list, &t->allelem, (list_less_func *)&is_priority_less, NULL);
-  intr_set_level(old_level);*/
+
+  /* Proj3 initialization */
+  t->pagedir = NULL;
+  t->page_table = NULL;
+
   list_push_back(&all_list, &t->allelem);
 }
 

@@ -20,6 +20,7 @@
 #include "lib/kernel/hash.h"
 #include "vm/page.h"
 #include "vm/frame.h"
+#include "vm/swap.h"
 
 #define MAX 300
 

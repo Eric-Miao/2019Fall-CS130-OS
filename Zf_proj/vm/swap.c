@@ -15,7 +15,7 @@ struct  block *swap;
 struct lock swap_lock;
 
 /* The bitmap used to manage the swap. */
-struct bitmap swap_bitmap;
+struct bitmap *swap_bitmap;
 
 /* The sector number per page, calculated by the division. */
 #define SECTOR_PER_PAGE (PGSIZE / BLOCK_SECTOR_SIZE)
@@ -31,11 +31,11 @@ swap_init()
     if (swap)
     {
         /* Thus one bit indicates several sectors needed for complete page. */
-        swap_size = block_size(swap_bitmap) / SECTOR_PER_PAGE;
+        swap_size = block_size(swap) / SECTOR_PER_PAGE;
         swap_bitmap = bitmap_create(swap_size);
         if(!swap_bitmap)
         {
-            printf("Swap bitmap creation failed. Function without swap block\n")
+            printf("Swap bitmap creation failed. Function without swap block\n");
         }
     }
     else
@@ -48,7 +48,7 @@ swap_init()
 /* To swap a page p into swap block, which is write into disk.
     Return true if swap succeeed, false otherwise.*/
 bool 
-swap_page_into_disk(struct page *p)
+swap_page_outto_disk(struct page *p)
 {
     size_t write_pos;
     block_sector_t base_to_wrtie;
@@ -61,12 +61,12 @@ swap_page_into_disk(struct page *p)
     write_pos = bitmap_scan(swap_bitmap, 0, 1, false);
     if (write_pos == BITMAP_ERROR)
     {
-        printf("bitmap full to write.\n")
+        printf("bitmap full to write.\n");
         return false;
     }
     bitmap_flip(swap_bitmap, write_pos);
     base_to_wrtie = write_pos * SECTOR_PER_PAGE;
-    base_to_read = p->frame->base;
+    base_to_read = p->frame->ker_base;
 
     /* Write. */
     /* From the start of the found sector, to the end of this bit in bitmap
@@ -81,14 +81,14 @@ swap_page_into_disk(struct page *p)
     p->file = NULL;
     
     /* Not sure the usage of the following properties, check later. */
-    p->file_offset = 0;
-    p->file_bytes = 0;
+    p->offset = 0;
+    p->bytes = 0;
 
     return true;
 }
 
-bool  
-swap_disk_outto_page(page *p)
+bool 
+swap_disk_into_page(struct page *p)
 {
     size_t read_pos;
     block_sector_t base_to_read;
@@ -98,9 +98,9 @@ swap_disk_outto_page(page *p)
         return false;
 
     /* locate the sector in swap to read. */
-    read_pos = p->sector/SECTOR_PER_PAGE;
-    base_to_read = page->sector;
-    base_to_write = frame->base
+    read_pos = p->swap_sector/SECTOR_PER_PAGE;
+    base_to_read = p->swap_sector;
+    base_to_write = p->frame->ker_base;
 
     /* Read. */
     for(int i = 0; i < SECTOR_PER_PAGE; i++)
@@ -117,14 +117,14 @@ swap_disk_outto_page(page *p)
     1. The page shall have a physical frame in map.
     2. The process shall have the frams's lock to ocuupy the frame.
     3. If it's a read, the frame shall be prewritten into swap. */
-static bool
+bool
 is_valid_swap(struct page* p, bool read)
 {
     if (p->frame == NULL)
         return false;
-    if (!lock_held_by_current_thread(p->frame->frame_lock))
+    if (!lock_held_by_current_thread(&p->frame->frame_lock))
         return false;
-    if (read && p->sector == (block_sector_t)-1)
+    if (read && p->swap_sector == (block_sector_t)-1)
         return false;
     return true;
 }

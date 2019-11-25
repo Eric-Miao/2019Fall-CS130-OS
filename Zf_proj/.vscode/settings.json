@@ -3,6 +3,9 @@
       "bitmap.h": "c",
       "thread.h": "c",
       "vaddr.h": "c",
-      "flags.h": "c"
+      "flags.h": "c",
+      "frame.h": "c",
+      "page.h": "c",
+      "swap.h": "c"
     }
 }

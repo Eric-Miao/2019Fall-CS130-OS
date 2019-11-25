@@ -127,13 +127,16 @@ struct thread
     struct list_elem allelem;           /* List element for all threads list. */
     struct list locks;                  /*locks that thread possess*/
     struct lock *stuck_lock;            /*stuck lock that thread needs*/
+    
     /*For dealing with busy waiting problem we add a guard as sleeping time signal*/
     int64_t guard;
     fixed_t recent_cpu;
+
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
     struct hash *page_table;            /* supplemental page table */
     void *uesp;                     /* stack pointer of user thread */
+
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
