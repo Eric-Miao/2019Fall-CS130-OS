@@ -363,7 +363,7 @@ void intr_handler(struct intr_frame *frame)
   else
   {
     struct thread *curr = thread_current();
-    curr->user_esp = frame->esp;
+    curr->uesp = frame->esp;
   }
 
   /* Invoke the interrupt's handler. */
