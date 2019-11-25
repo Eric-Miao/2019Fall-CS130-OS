@@ -562,24 +562,26 @@ load_segment(struct file *file, off_t ofs, uint8_t *upage,
 
     /* Get a page of memory. */
     //uint8_t *kpage = palloc_get_page(PAL_USER);
-    struct page *p = page_allocate(upage, writable);
+    struct page *p = page_allocate(upage, !writable);
     if (p == NULL)
       return false;
 
-    /* Load this page. */
+    /* Load this page.
     if (file_read(file, p, page_read_bytes) != (int)page_read_bytes)
     {
       page_free(p);
       return false;
     }
-    memset(p + page_read_bytes, 0, page_zero_bytes);
+    memset(p + page_read_bytes, 0, page_zero_bytes); */
 
-    /* Add the page to the process's address space. */
+    /* Add the page to the process's address space.
     if (!install_page(upage, p, writable))
     {
       page_free(p);
       return false;
-    }
+    } 
+    */
+
     if (page_read_bytes > 0)
     {
       p->file = file;
