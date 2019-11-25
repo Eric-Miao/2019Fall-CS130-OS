@@ -2,6 +2,7 @@
     "files.associations": {
       "bitmap.h": "c",
       "thread.h": "c",
-      "vaddr.h": "c"
+      "vaddr.h": "c",
+      "flags.h": "c"
     }
 }

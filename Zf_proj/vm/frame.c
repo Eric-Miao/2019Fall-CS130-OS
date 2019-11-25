@@ -91,7 +91,7 @@ frame_allocate(struct page *p)
         
         if (f->page == NULL)
         {
-            f->page = page;
+            f->page = p;
             lock_release(&frame_table_lock);
             return f;            
         }

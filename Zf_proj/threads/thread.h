@@ -132,7 +132,7 @@ struct thread
     fixed_t recent_cpu;
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
-    struct hash *page_table;                 /* supplemental page table */
+    struct hash *page_table;            /* supplemental page table */
     void *uesp;                     /* stack pointer of user thread */
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
