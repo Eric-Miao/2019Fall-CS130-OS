@@ -532,7 +532,7 @@ sys_mmap (int handle, void *addr)
 {
   struct file_descriptor *fd = lookup_fd (handle);
   struct mapping *m = malloc (sizeof *m);
-  size_t offset;
+  size_t offset = 0;
   off_t length;
 
   if (m == NULL || addr == NULL || pg_ofs (addr) != 0)
@@ -550,8 +550,6 @@ sys_mmap (int handle, void *addr)
   m->base = addr;
   m->page_cnt = 0;
   list_push_front (&thread_current ()->mappings, &m->elem);
-
-  offset = 0;
   lock_acquire (&fs_lock);
   length = file_length (m->file);
   lock_release (&fs_lock);

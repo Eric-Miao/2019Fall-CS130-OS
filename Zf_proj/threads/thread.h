@@ -134,6 +134,7 @@ struct thread
     struct list_elem elem;              /* List element. */
     struct hash *page_table;                 /* supplemental page table */
     void *uesp;                     /* stack pointer of user thread */
+    struct list map_list;               /* map list*/
 #ifdef USERPROG
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */

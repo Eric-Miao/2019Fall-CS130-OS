@@ -26,6 +26,15 @@ struct file_to_fd
   struct file *f_addr_ptr; /*file address*/
   struct list_elem f_list; /*fd list of thread*/
 };
+/*struct that stores map information and file pointer*/
+struct map
+{
+  int mapid;             /*map id*/
+  size_t page_count;     /*amount of pages*/
+  uint8_t *index;        /*begin position of map memory*/
+  struct file *file;     /*file address*/
+  struct list_elem elem; /*convenient for storing*/
+};
 /*function that get the arguments behind syscall from stack*/
 void get_args(struct intr_frame *f, int *args, int num)
 {
@@ -261,8 +270,27 @@ syscall_handler(struct intr_frame *f UNUSED)
     /*call close()*/
     close(args[0]);
   }
+  if (*(int *)f->esp == SYS_MMAP)
+  {
+    /*get file descriptor and address*/
+    get_args(f, &args[0], 2);
+    if (!is_user_vaddr((const void *)args[1]) || (const void *)args[1] == NULL || (const void *)args[1] < (void *)0x08048000)
+    {
+      /*terminate the program and free its resources */
+      exit(-1);
+    }
+    /*call mmap()*/
+    f->eax = mmap(args[0], (void *)args[1]);
+  }
+  if (*(int *)f->esp == SYS_MUMMAP)
+  {
+    /*get map id*/
+    get_args(f, &args[0], 1);
+    /*call munmap()*/
+    munmap(args[0]);
+  }
   /*if it is an invalid system call*/
-  if (*(int *)f->esp != SYS_HALT && *(int *)f->esp != SYS_EXIT && *(int *)f->esp != SYS_EXEC && *(int *)f->esp != SYS_WRITE && *(int *)f->esp != SYS_READ && *(int *)f->esp != SYS_OPEN && *(int *)f->esp != SYS_CLOSE && *(int *)f->esp != SYS_WAIT && *(int *)f->esp != SYS_CREATE && *(int *)f->esp != SYS_REMOVE && *(int *)f->esp != SYS_FILESIZE && *(int *)f->esp != SYS_SEEK && *(int *)f->esp != SYS_TELL)
+  if (*(int *)f->esp != SYS_HALT && *(int *)f->esp != SYS_EXIT && *(int *)f->esp != SYS_EXEC && *(int *)f->esp != SYS_WRITE && *(int *)f->esp != SYS_READ && *(int *)f->esp != SYS_OPEN && *(int *)f->esp != SYS_CLOSE && *(int *)f->esp != SYS_WAIT && *(int *)f->esp != SYS_CREATE && *(int *)f->esp != SYS_REMOVE && *(int *)f->esp != SYS_FILESIZE && *(int *)f->esp != SYS_SEEK && *(int *)f->esp != SYS_TELL && *(int *)f->esp != SYS_MMAP && *(int *)f->esp != SYS_MUNMAP)
   {
     /*terminate the program and free its resources */
     exit(-1);
@@ -574,7 +602,7 @@ void close(int fd)
       /*close the file and remove form file list*/
       file_close(link->f_addr_ptr);
       list_remove(&link->f_list);
-      curr->curr_fd--;
+      /*curr->curr_fd--;*/
       free(link);
       /*release the lock and return*/
       lock_release(&lock_f);
@@ -585,4 +613,87 @@ void close(int fd)
   /*can't find fd file*/
   lock_release(&lock_f);
   return;
+}
+
+int mmap(int fd, void *addr)
+{
+  size_t f_offset = 0;
+  off_t f_length;
+  struct list_elem *temp;
+  struct thread *curr = thread_current();
+  /*if current thread has no fd*/
+  if (list_empty(&curr->file_des))
+  {
+    /*return error*/
+    return -1;
+  }
+  temp = list_front(&curr->file_des);
+  /*search the file to fd list in current thread*/
+  while (temp != NULL)
+  {
+    struct file_to_fd *link = list_entry(temp, struct file_to_fd, f_list);
+    /*if find the fd file*/
+    if (link->f_des == fd)
+    {
+      break;
+    }
+    temp = temp->next;
+  }
+  lock_acquire(&lock_f);
+  /*reopen the file*/
+  struct file *f = filesys_reopen(link->f_addr_ptr);
+  lock_release(&lock_f);
+  /*if file doesn't exist*/
+  if (f == NULL)
+  {
+    return -1;
+  }
+  /*create a map*/
+  struct map *m = malloc(sizeof *m);
+  /*if we can not create a map or address invalid return -1*/
+  if (m == NULL || addr == NULL || pg_ofs(addr) != 0)
+  {
+    return -1;
+  }
+  /*initiate the map and push it to map list*/
+  m->page_count = 0;
+  m->index = addr;
+  m->file = f;
+  m->mapid = curr->curr_fd;
+  curr->curr_fd++;
+  list_push_front(&curr->map_list, &m->elem);
+  /*lock filesystem and get the length of file*/
+  lock_acquire(&lock_f);
+  f_length = file_length(m->file);
+  lock_release(&lock_f);
+  /*start to map file to memory*/
+  while (f_length > 0)
+  {
+    struct page *p = page_allocate((uint8_t *)addr + f_offset, false);
+    if (p == NULL)
+    {
+      unmap(m);
+      return -1;
+    }
+    p->swapable = false;
+    p->file = m->file;
+    p->offset = f_offset;
+    if (f_length >= PGSIZE)
+    {
+      p->bytes = PGSIZE;
+    }
+    else
+    {
+      p->bytes = f_length;
+    }
+    f_offset += p->bytes;
+    f_length -= p->bytes;
+    m->page_count++;
+  }
+
+  return m->mapid;
+}
+/*unmap the file*/
+void munmap(int mapid)
+{
 }

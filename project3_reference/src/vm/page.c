@@ -122,8 +122,8 @@ page_in (void *fault_addr)
   frame_lock (p);
   if (p->frame == NULL)
     {
-      /*try to allocate frame and fill in it*/
-      success = page_in(p);
+      if (!do_page_in (p))
+        return false;
     }
   ASSERT (lock_held_by_current_thread (&p->frame->lock));
 

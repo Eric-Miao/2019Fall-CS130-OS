@@ -657,6 +657,8 @@ init_thread(struct thread *t, const char *name, int priority)
   list_init(&t->children);
   /*initiate the file descriptor list*/
   list_init(&t->file_des);
+  /*initiate the map_list*/
+  list_init (&t->map_list);
   /*initiate the file descriptor by 2
   0 is STDIN and 1 is STDOUT*/
   t->curr_fd = 2;

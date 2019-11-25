@@ -153,18 +153,12 @@ page_fault(struct intr_frame *f)
    user = (f->error_code & PF_U) != 0;
 
    /* Myx: Keep the old exceptions and reconstruct a new one.
-  if ((is_kernel_vaddr(fault_addr) && user) || !write)
+  if(not_present||(is_kernel_vaddr(fault_addr)&&user))
   {
      struct thread *curr = thread_current();
      curr->exitcode = -1;
      thread_exit();
-  }
-
-  if (user && not_present )
-  {
-
-  } 
-  */
+  }*/
 
    /* Myx: Round down to the nearest virtual page base if needed. */
    //fault_page = pg_round_down(fault_addr);
@@ -209,7 +203,7 @@ page_fault(struct intr_frame *f)
                thread_exit();
             }
          }
-         ASSERT(lock_held_by_current_thread(&p->frame->lock));
+         ASSERT(lock_held_by_current_thread(&p->frame->frame_lock));
          /*set the page with frame into page tabel*/
          success = pagedir_set_page(curr->pagedir, p->addr, p->frame->ker_base, !p->writabel);
          if (!success)
