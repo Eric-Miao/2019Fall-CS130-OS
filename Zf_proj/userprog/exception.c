@@ -5,6 +5,8 @@
 #include "threads/interrupt.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "vm/frame.h"
+#include "vm/page.h"
 
 /* Number of page faults processed. */
 static long long page_fault_cnt;
@@ -205,7 +207,7 @@ page_fault(struct intr_frame *f)
          }
          ASSERT(lock_held_by_current_thread(&p->frame->frame_lock));
          /*set the page with frame into page tabel*/
-         success = pagedir_set_page(curr->pagedir, p->addr, p->frame->ker_base, !p->writabel);
+         success = pagedir_set_page(curr->pagedir, p->addr, p->frame->ker_base, !p->writable);
          if (!success)
          {
             /*terminate the process if set faild*/

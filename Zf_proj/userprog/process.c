@@ -17,6 +17,10 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "lib/kernel/hash.h"
+#include "vm/page.h"
+#include "vm/frame.h"
+#include "vm/swap.h"
 
 #define MAX 300
 
@@ -70,10 +74,12 @@ tid_t process_execute(const char *file_name)
   }
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create(name, PRI_DEFAULT, start_process, fn_copy);
-  if (tid == TID_ERROR)
+  
+  /* Myx: I see u have done this free in start_process. */
+  /*   if (tid == TID_ERROR)
   {
     palloc_free_page(fn_copy);
-  }
+  } */
   /*let current thread wait for child thread to finish loading*/
   sema_down(&thread_current()->waiting_parent);
   /*loading failed*/
@@ -92,13 +98,20 @@ start_process(void *file_name_)
   struct intr_frame if_;
   /*int load_status;*/
   bool success;
+  struct thread *curr = thread_current();
+
+  /* Somehow the *curr->page_table cannot be used in malloc. */
+  curr->page_table = malloc(sizeof (struct hash));
+  if (curr->page_table == NULL)
+    printf("page table malloc failed.\n");
+  hash_init(curr->page_table, page_number, page_less, NULL);
+
   /* Initialize interrupt frame and load executable. */
   memset(&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load(file_name, &if_.eip, &if_.esp);
-  struct thread *curr = thread_current();
   palloc_free_page(file_name);
   if (!success)
   {
@@ -229,6 +242,9 @@ void process_exit(void)
     file_allow_write(cur->FILE);
     file_close(cur->FILE);
   }
+
+  /* Free the supplementary PT current process owns. */
+  page_table_free();
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
@@ -546,25 +562,33 @@ load_segment(struct file *file, off_t ofs, uint8_t *upage,
     size_t page_zero_bytes = PGSIZE - page_read_bytes;
 
     /* Get a page of memory. */
-    uint8_t *kpage = palloc_get_page(PAL_USER);
-    if (kpage == NULL)
+    //uint8_t *kpage = palloc_get_page(PAL_USER);
+    struct page *p = page_allocate(upage, !writable);
+    if (p == NULL)
       return false;
 
-    /* Load this page. */
-    if (file_read(file, kpage, page_read_bytes) != (int)page_read_bytes)
+    /* Load this page.
+    if (file_read(file, p, page_read_bytes) != (int)page_read_bytes)
     {
-      palloc_free_page(kpage);
+      page_free(p);
       return false;
     }
-    memset(kpage + page_read_bytes, 0, page_zero_bytes);
+    memset(p + page_read_bytes, 0, page_zero_bytes); */
 
-    /* Add the page to the process's address space. */
-    if (!install_page(upage, kpage, writable))
+    /* Add the page to the process's address space.
+    if (!install_page(upage, p, writable))
     {
-      palloc_free_page(kpage);
+      page_free(p);
       return false;
-    }
+    } 
+    */
 
+    if (page_read_bytes > 0)
+    {
+      p->file = file;
+      p->offset = ofs;
+      p->bytes = page_read_bytes;
+    }
     /* Advance. */
     read_bytes -= page_read_bytes;
     zero_bytes -= page_zero_bytes;
@@ -578,16 +602,27 @@ load_segment(struct file *file, off_t ofs, uint8_t *upage,
 static bool
 setup_stack(void **esp, char *argv[], int argc)
 {
-  uint8_t *kpage;
+  struct page *upage;
   bool success = false;
 
-  kpage = palloc_get_page(PAL_USER | PAL_ZERO);
-  if (kpage != NULL)
+  //Myx: kpage = palloc_get_page(PAL_USER | PAL_ZERO);
+  upage = page_allocate(((uint8_t *) PHYS_BASE) - PGSIZE, false);
+  if (upage != NULL)
   {
-    success = install_page(((uint8_t *)PHYS_BASE) - PGSIZE, kpage, true);
-    if (success)
+    /* Myx: Don't know if I should keep this statement. */
+    //success = install_page(((uint8_t *)PHYS_BASE) - PGSIZE, kpage, true);
+    upage->frame = frame_allocate(upage);
+    if (upage->frame != NULL)
     {
-      *esp = PHYS_BASE;
+      /* The first page of stack stores the para etc. so should not
+        be swapped or written to change. */
+      upage->swapable = false;
+      upage->writable = false;
+
+      //*esp = PHYS_BASE;
+      /* Now, the esp should point to the actually position of upage's frame
+        To store the parsed arguments. */
+      *esp = upage->frame->ker_base;
       /*address to argument that put in stack initially*/
       uint32_t *arg_addr[argc];
       int length;
@@ -626,10 +661,16 @@ setup_stack(void **esp, char *argv[], int argc)
       /*allocate and push fake "return adress" into stack*/
       *esp = *esp - 4;
       (*(int *)(*esp)) = 0;
-    }
-    else
 
-      palloc_free_page(kpage);
+      /* Here should repoint esp to the virtual memory. */
+      *esp = upage + PGSIZE;
+
+      frame_unlock(upage->frame);
+    }
+    //else
+    /* Myx: No need to free this page because it failed to get
+      a frame. */
+      //palloc_free_page(kpage);
   }
   return success;
 }

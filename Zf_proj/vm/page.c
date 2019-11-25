@@ -9,6 +9,8 @@
 #include "userprog/pagedir.h"
 #include "threads/vaddr.h"
 
+#define STACK_MAX (1024 * 1024)
+#define STACK_BOTTOM 0x8048000
 /*allocate a page and add it into page table*/
 struct page *page_allocate(void *addr, bool writable)
 {
@@ -27,13 +29,13 @@ struct page *page_allocate(void *addr, bool writable)
         /*there is no frame allocated yet*/
         new_page->frame = NULL;
         /*there is no initial swap area*/
-        new_page->sector = (block_sector_t)-1;
+        new_page->swap_sector = (block_sector_t)-1;
         /*no initial file*/
         new_page->file = NULL;
-        new_page->file_offset = 0;
-        new_page->file_bytes = 0;
+        new_page->offset = 0;
+        new_page->bytes = 0;
         /*record the process using this page*/
-        new_page->thread = curr;
+        new_page->onwer = curr;
         /*search and insert new page into page table*/
         if (hash_insert(curr->page_table, &new_page->pte) != NULL)
         {
@@ -49,7 +51,7 @@ struct page *page_allocate(void *addr, bool writable)
 static void page_free(struct hash_elem *elem, void *aux UNUSED)
 {
     struct page *p = hash_entry(elem, struct page, pte);
-    frame_lock(p);
+    frame_lock(p->frame);
     /*if it is allocated a frame then free it*/
     if (p->frame != NULL)
     {
@@ -81,7 +83,7 @@ struct page *page_search(const void *address)
         p.addr = (void *)pg_round_down(address);
         struct thread *curr = thread_current();
         /*search for the page in current thread's page tabel*/
-        struct hash_elem *key = hash_find(curr->page_table, p.pte);
+        struct hash_elem *key = hash_find(curr->page_table, &p.pte);
         if (key != NULL)
         {
             /*target page is in current thread's hash table, return it*/
@@ -89,7 +91,13 @@ struct page *page_search(const void *address)
             return target;
         }
         /*if the given address is out of the current stack but inside the PUSHA range(32 bytes)*/
-        if ((p.addr > PHYS_BASE - STACK_MAX) && ((void *)curr->uesp - 32 < address))
+        
+        //if ((p.addr > PHYS_BASE - STACK_MAX) && ((void *)curr->uesp - 32 < address))
+        
+        /* Myx: I doubt this bracnch condition. because there is this stack_max of unknown.
+        So I personally changed this to the below version, just check the bottom but not this 
+        subtraction method of no reason for this stack_max. */
+        if ((p.addr > STACK_BOTTOM) && ((void *)curr->uesp - 32 < address))
         {
             /*growth the stack*/
             struct page *growth = page_allocate(p.addr, false);
@@ -111,11 +119,11 @@ bool page_lock(const void *addr, bool write)
         return false;
     }
     /*if trying to write to a read only page then return false*/
-    if (p->writabel && write)
+    if (p->writable && write)
     {
         return false;
     }
-    frame_lock(p);
+    frame_lock(p->frame);
     /*if no frame is allocated to current page yet*/
     if (p->frame == NULL)
     {
@@ -140,7 +148,7 @@ bool page_lock(const void *addr, bool write)
 /* unlock the page locked to frame */
 void page_unlock(const void *addr)
 {
-    struct page *p = page_for_addr(addr);
+    struct page *p = page_search(addr);
     ASSERT(p != NULL);
     frame_unlock(p->frame);
 }
@@ -150,13 +158,13 @@ bool page_accessed_recently(struct page *p)
 {
     /*make sure it has a related locked frame*/
     ASSERT(p->frame != NULL);
-    ASSERT(lock_held_by_current_thread(&p->frame->lock));
+    ASSERT(lock_held_by_current_thread(&p->frame->frame_lock));
     /*check if it is recently accessed*/
-    bool accessed = pagedir_is_accessed(p->thread->pagedir, p->addr);
+    bool accessed = pagedir_is_accessed(p->onwer->pagedir, p->addr);
     if (accessed)
     {
         /*if it is recently accessed set it to not accessed recently after checking */
-        pagedir_set_accessed(p->thread->pagedir, p->addr, false);
+        pagedir_set_accessed(p->onwer->pagedir, p->addr, false);
     }
     return accessed;
 }
@@ -165,16 +173,16 @@ bool page_accessed_recently(struct page *p)
 bool page_in(struct page *p)
 {
     /* Get a frame for the page. */
-    p->frame = frame_alloc(p);
+    p->frame = frame_allocate(p);
     if (p->frame == NULL)
     {
         return false;
     }
     /* there is data stored in the swap area */
-    if (p->sector != (block_sector_t)-1)
+    if (p->swap_sector != (block_sector_t)-1)
     {
         /* read the data in swap area out and write into page */
-        swap_disk_outto_page(p)
+        swap_disk_outto_page(p);
     }
     /*if there is file to write*/
     else if (p->file != NULL)
@@ -189,14 +197,14 @@ bool page_in(struct page *p)
           However, confuse why printing*/
         if (read != p->bytes)
         {
-            printf("bytes read (%" PROTd ") != bytes requested (%" PROTd ")\n",
-                   read_bytes, p->file_bytes);
+          printf("bytes read (%" PROTd ") != bytes requested (%" PROTd ")\n",
+                 read, p->bytes);
         }
     }
     else
     {
         /* fill the page with zero */
-        memset(p->frame->base, 0, PGSIZE);
+        memset(p->frame->ker_base, 0, PGSIZE);
     }
     return true;
 }
@@ -208,11 +216,11 @@ bool page_out(struct page *p)
     bool success = false;
     /*make sure page is mapped to a locked frame*/
     ASSERT(p->frame != NULL);
-    ASSERT(lock_held_by_current_thread(&p->frame->lock));
+    ASSERT(lock_held_by_current_thread(&p->frame->frame_lock));
     /*make current page not present before checking dirty*/
-    pagedir_clear_page(p->thread->pagedir, (void *)p->addr);
+    pagedir_clear_page(p->onwer->pagedir, (void *)p->addr);
     /*check if the page is modified */
-    dirty = pagedir_is_dirty(p->thread->pagedir, (const void *)p->addr);
+    dirty = pagedir_is_dirty(p->onwer->pagedir, (const void *)p->addr);
     /*if the file doesn't exist*/
     if (p->file == NULL)
     {
@@ -259,7 +267,7 @@ void page_eviction(void *addr)
     struct page *p = page_search(addr);
     /*ensure page exist*/
     ASSERT(p != NULL);
-    frame_lock(p);
+    frame_lock(p->frame);
     /*if page has a frame*/
     if (p->frame != NULL)
     {
@@ -273,7 +281,7 @@ void page_eviction(void *addr)
         frame_free(temp);
     }
     /*delete its page table entry*/
-    hash_delete(thread_current()->pages, &p->pte);
+    hash_delete(thread_current()->page_table, &p->pte);
     free(p);
 }
 
