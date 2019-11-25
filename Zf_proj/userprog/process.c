@@ -580,7 +580,12 @@ load_segment(struct file *file, off_t ofs, uint8_t *upage,
       page_free(p);
       return false;
     }
-
+    if (page_read_bytes > 0)
+    {
+      p->file = file;
+      p->offset = ofs;
+      p->bytes = page_read_bytes;
+    }
     /* Advance. */
     read_bytes -= page_read_bytes;
     zero_bytes -= page_zero_bytes;
