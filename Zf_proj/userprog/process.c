@@ -681,6 +681,7 @@ setup_stack(void **esp, char *argv[], int argc)
         length = sizeof(char) * (strlen(argv[i]) + 1);
         printf("\n\nstep2 %d\n\n\n", i);
         /*copy it into stack*/
+        printf(argv[i]);
         memcpy(*esp, argv[i], sizeof(char) * (strlen(argv[i]) + 1));
         printf("\n\nstep3 %d\n\n\n", i);
         /*add its ref to the arry*/
