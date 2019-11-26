@@ -32,8 +32,11 @@ frame_init()
         new_frame->page = NULL;
         lock_init(&new_frame->frame_lock);
         list_push_back(&frame_table, &new_frame->fte);
+        ASSERT(!list_empty(&frame_table));
         phys_mem = palloc_get_page(PAL_USER);
+        ASSERT(!list_empty(&frame_table));
     }
+    ASSERT(!list_empty(&frame_table));
 }
 
 bool 
@@ -64,45 +67,6 @@ frame_unlock(struct frame *f)
 {
     ASSERT(lock_held_by_current_thread(&f->frame_lock));
     lock_release(&f->frame_lock);
-}
-
-/* ACTUALLY, I think this implementation is kind of silly because it travels the 
-    frame table to determine if the frame is owned by the current thread.
-    Rather than go through the process's page table to see what frame he gets,
-    and choose from them.
-    Or use another method to show if the frame is owned by the process.
-    Just suggestions. */
-struct frame*
-frame_allocate(struct page *p)
-{
-    lock_acquire(&frame_table_lock);
-    
-    struct list_elem *e;
-    struct list *l = &frame_table;
-
-    for (e = list_begin(l); e != list_end(l); e = list_next(e))
-    {
-        struct frame *f = list_entry(e, struct frame, fte);
-        
-        /* If the current thread doesn't have the lock of this frame
-            This means the this frame doesn't belong to the current process,
-            just go on to check the next frame. */
-        if (!lock_try_acquire(&f->frame_lock))
-            continue;
-        
-        if (f->page == NULL)
-        {
-            f->page = p;
-            lock_release(&frame_table_lock);
-            return f;            
-        }
-        lock_release(&f->frame_lock);
-    }
-    
-    /*  If reach here, no free frame currently, start to evict. 
-        For now, just panic. evict shall be on at last.*/
-    PANIC("no enough frames to allocate.");
-    //return frame_evict(p);
 }
 
 /* Use the clock policy to choose a frame to evict.
@@ -142,7 +106,7 @@ frame_evict(struct page *p)
 
         /*  If the page has recently accessed, clean the access bit and continue. 
             IMPORTANT: CLEAR THE ACCESS BIT IN PAGE P AFTER I CHECK.*/
-        if (page_recently_accessed(p))
+        if (page_accessed_recently(p))
         {
             lock_release(&f->frame_lock);
             continue;
@@ -168,4 +132,41 @@ frame_evict(struct page *p)
     }
     lock_release(&frame_table_lock);
     return NULL;
+}
+
+/* ACTUALLY, I think this implementation is kind of silly because it travels the 
+    frame table to determine if the frame is owned by the current thread.
+    Rather than go through the process's page table to see what frame he gets,
+    and choose from them.
+    Or use another method to show if the frame is owned by the process.
+    Just suggestions. */
+struct frame*
+frame_allocate(struct page *p)
+{
+    lock_acquire(&frame_table_lock);
+    
+    struct list_elem *e;
+    struct list *l = &frame_table;
+    for (e = list_front(l); e != list_end(l); e = list_next(e))
+    {
+        struct frame *f = list_entry(e, struct frame, fte);
+        /* If the current thread doesn't have the lock of this frame
+            This means the this frame doesn't belong to the current process,
+            just go on to check the next frame. */
+        if (!lock_try_acquire(&f->frame_lock))
+            continue;
+        
+        if (f->page == NULL)
+        {
+            f->page = p;
+            lock_release(&frame_table_lock);
+            return f;            
+        }
+        lock_release(&f->frame_lock);
+    }
+    
+    /*  If reach here, no free frame currently, start to evict. 
+        For now, just panic. evict shall be on at last.*/
+    /*PANIC("no enough frames to allocate.");*/
+    return frame_evict(p);
 }

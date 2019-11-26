@@ -179,6 +179,7 @@ page_fault(struct intr_frame *f)
          /*if current thread has no page tabel*/
          if (curr->page_table == NULL)
          {
+            printf("\npage table\n");
             thread_current()->exitcode = -1;
             thread_exit();
          }
@@ -186,6 +187,7 @@ page_fault(struct intr_frame *f)
          /*fault address is in no page*/
          if (p == NULL)
          {
+            printf("\npage\n");
             thread_current()->exitcode = -1;
             thread_exit();
          }
