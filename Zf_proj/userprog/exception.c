@@ -164,7 +164,7 @@ page_fault(struct intr_frame *f)
    //fault_page = pg_round_down(fault_addr);
    if (user)
    {
-      if (is_kernel_vaddr(fault_addr) || !write ||
+      if (is_kernel_vaddr(fault_addr) ||
           (fault_addr < STACK_BOTTOM && is_user_vaddr(fault_addr)))
       {
          thread_current()->exitcode = -1;
@@ -192,7 +192,7 @@ page_fault(struct intr_frame *f)
             thread_exit();
          }
          /*lock the frame first*/
-         frame_lock(p);
+         frame_lock(p->frame);
          /*if no frame is allocated to the page*/
          if (p->frame == NULL)
          {
