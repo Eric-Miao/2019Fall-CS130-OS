@@ -112,6 +112,8 @@ start_process(void *file_name_)
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load(file_name, &if_.eip, &if_.esp);
+  printf("\n\n\nBelieve the load shall be succeeded.\n\n\n");
+
   palloc_free_page(file_name);
   if (!success)
   {
@@ -128,6 +130,7 @@ start_process(void *file_name_)
     curr->parent->success = 1;
     /*wake up parent that is waiting*/
     sema_up(&curr->parent->waiting_parent);
+    printf("\n\n\nBelieve the load shall be succeeded.\n\n\n");
   }
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -362,6 +365,7 @@ static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
    Returns true if successful, false otherwise. */
 bool load(const char *file_name, void (**eip)(void), void **esp)
 {
+  printf("\n\nGuess I am in load now.\n\n\n\n");
   struct thread *t = thread_current();
   struct Elf32_Ehdr ehdr;
   struct file *file = NULL;
@@ -369,9 +373,13 @@ bool load(const char *file_name, void (**eip)(void), void **esp)
   bool success = false;
   int i;
   /* Allocate and activate page directory. */
+  printf("\n\nGuess before PD create.\n\n\n\n");
+
   t->pagedir = pagedir_create();
   if (t->pagedir == NULL)
     goto done;
+  printf("\n\nGuess before process activate.\n\n\n\n");
+
   process_activate();
   /*create string to store arguments*/
   char *save_ptr;
@@ -392,6 +400,8 @@ bool load(const char *file_name, void (**eip)(void), void **esp)
     token = strtok_r(NULL, " ", &save_ptr);
   }
   /* Open executable file. */
+  printf("\n\nGuess before filesys-open.\n\n\n\n");
+
   file = filesys_open(argv[0]);
   /*printf("open is : %s/n",file);*/
   if (file == NULL)
@@ -399,6 +409,7 @@ bool load(const char *file_name, void (**eip)(void), void **esp)
     printf("load: %s: open failed\n", argv[0]);
     goto done;
   }
+  printf("\n\nGuess before file_read and memcmp.\n\n\n\n");
 
   /* Read and verify executable header. */
   if (file_read(file, &ehdr, sizeof ehdr) != sizeof ehdr || memcmp(ehdr.e_ident, "\177ELF\1\1\1", 7) || ehdr.e_type != 2 || ehdr.e_machine != 3 || ehdr.e_version != 1 || ehdr.e_phentsize != sizeof(struct Elf32_Phdr) || ehdr.e_phnum > 1024)
@@ -409,6 +420,8 @@ bool load(const char *file_name, void (**eip)(void), void **esp)
 
   /* Read program headers. */
   file_ofs = ehdr.e_phoff;
+  printf("\n\nGuess before go into for.\n\n\n\n");
+
   for (i = 0; i < ehdr.e_phnum; i++)
   {
     struct Elf32_Phdr phdr;
@@ -416,6 +429,7 @@ bool load(const char *file_name, void (**eip)(void), void **esp)
     if (file_ofs < 0 || file_ofs > file_length(file))
       goto done;
     file_seek(file, file_ofs);
+    printf("\n\nGuess before file_read.\n\n\n\n");
 
     if (file_read(file, &phdr, sizeof phdr) != sizeof phdr)
       goto done;
@@ -434,6 +448,8 @@ bool load(const char *file_name, void (**eip)(void), void **esp)
     case PT_SHLIB:
       goto done;
     case PT_LOAD:
+      printf("\n\nGuess before valid_segment.\n\n\n\n");
+
       if (validate_segment(&phdr, file))
       {
         bool writable = (phdr.p_flags & PF_W) != 0;
@@ -455,6 +471,8 @@ bool load(const char *file_name, void (**eip)(void), void **esp)
           read_bytes = 0;
           zero_bytes = ROUND_UP(page_offset + phdr.p_memsz, PGSIZE);
         }
+        printf("\n\nGuess before load_segment.\n\n\n\n");
+
         if (!load_segment(file, file_page, (void *)mem_page,
                           read_bytes, zero_bytes, writable))
           goto done;
@@ -464,12 +482,14 @@ bool load(const char *file_name, void (**eip)(void), void **esp)
       break;
     }
   }
+  printf("\n\nGuess before setup_stack.\n\n\n\n");
 
   /* Set up stack. */
   if (!setup_stack(esp, argv, argc))
   {
     goto done;
   }
+  printf("\n\nGuess after setup_stack.\n\n\n\n");
 
   /* Start address. */
   *eip = (void (*)(void))ehdr.e_entry;
@@ -562,7 +582,7 @@ load_segment(struct file *file, off_t ofs, uint8_t *upage,
   ASSERT(pg_ofs(upage) == 0);
   ASSERT(ofs % PGSIZE == 0);
 
-  file_seek(file, ofs);
+  //file_seek(file, ofs);
   while (read_bytes > 0 || zero_bytes > 0)
   {
     /* Calculate how to fill this page.
@@ -612,43 +632,64 @@ load_segment(struct file *file, off_t ofs, uint8_t *upage,
 static bool
 setup_stack(void **esp, char *argv[], int argc)
 {
+  printf("\n\nGuess into setup_stack\n\n\n");
   struct page *upage;
   bool success = false;
 
   //Myx: kpage = palloc_get_page(PAL_USER | PAL_ZERO);
+  printf("\n\nGuess before page_allocate\n\n\n");
+
   upage = page_allocate(((uint8_t *)PHYS_BASE) - PGSIZE, false);
   if (upage != NULL)
   {
     /* Myx: Don't know if I should keep this statement. */
     //success = install_page(((uint8_t *)PHYS_BASE) - PGSIZE, kpage, true);
+    printf("\n\nGuess before frame allocate.\n\n\n");
+
     upage->frame = frame_allocate(upage);
+    printf("\n\nGuess after frame_allocate\n\n\n");
+
     if (upage->frame != NULL)
     {
+      printf("\n\nGuess frame_allocate succeeded\n\n\n");
+
       /* The first page of stack stores the para etc. so should not
         be swapped or written to change. */
       upage->swapable = false;
       upage->writable = false;
+      printf("\n\nGuess 1\n\n\n");
 
-      //*esp = PHYS_BASE;
+      *esp = PHYS_BASE;
       /* Now, the esp should point to the actually position of upage's frame
         To store the parsed arguments. */
-      *esp = upage->frame->ker_base;
+      //*esp = upage->frame->ker_base;
       /*address to argument that put in stack initially*/
       uint32_t *arg_addr[argc];
       int length;
       int total_length = 0;
+      printf("\n\nGuess 2\n\n\n");
+
       /*add argument in command and program into stack from back*/
+      printf("\n\n there are %d args",argc);
       for (int i = argc - 1; i >= 0; i--)
       {
+        printf("\n\nloop %d\n\n\n",i);
+
         /*allocate memory for str(add '\0' at last)*/
         *esp = *esp - sizeof(char) * (strlen(argv[i]) + 1);
+        printf("\n\nstep1 %d\n\n\n", i);
         length = sizeof(char) * (strlen(argv[i]) + 1);
+        printf("\n\nstep2 %d\n\n\n", i);
         /*copy it into stack*/
         memcpy(*esp, argv[i], sizeof(char) * (strlen(argv[i]) + 1));
+        printf("\n\nstep3 %d\n\n\n", i);
         /*add its ref to the arry*/
         arg_addr[i] = (uint32_t *)*esp;
+        printf("\n\nstep4 %d\n\n\n", i);
         total_length = total_length + length;
+        printf("\n\nstep5 %d\n\n\n", i);
       }
+      printf("\n\nGuess 3\n\n\n");
 
       *esp -= 4 - total_length % 4;
       /*allocate for sentinel*/
@@ -656,6 +697,8 @@ setup_stack(void **esp, char *argv[], int argc)
       /*add sentinel into stack*/
       (*(int *)(*esp)) = 0;
       *esp = *esp - 4;
+      printf("\n\nGuess 4\n\n\n");
+
       for (int i = argc - 1; i >= 0; i--)
       {
         /* allocate space and push address of arguement 
@@ -663,6 +706,8 @@ setup_stack(void **esp, char *argv[], int argc)
         (*(uint32_t **)(*esp)) = arg_addr[i];
         *esp = *esp - 4;
       }
+      printf("\n\nGuess 5\n\n\n");
+
       /*allocate and push pointer to argv into stack*/
       (*(uintptr_t **)(*esp)) = *esp + 4;
       /*allocate and push number of argument into stack*/
@@ -673,7 +718,8 @@ setup_stack(void **esp, char *argv[], int argc)
       (*(int *)(*esp)) = 0;
 
       /* Here should repoint esp to the virtual memory. */
-      *esp = upage + PGSIZE;
+      //*esp = upage + PGSIZE;
+      printf("\n\nGuess before frame unlock\n\n\n");
 
       frame_unlock(upage->frame);
       success = true;
@@ -683,6 +729,8 @@ setup_stack(void **esp, char *argv[], int argc)
       a frame. */
     //palloc_free_page(kpage);
   }
+  printf("\n\nGuess before return.\n\n\n");
+
   return success;
 }
 
