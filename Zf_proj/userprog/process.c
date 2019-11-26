@@ -204,6 +204,10 @@ void process_exit(void)
   struct thread *cur = thread_current();
   uint32_t *pd;
   struct list_elem *temp;
+
+  /* Ready to exit */
+  printf("\nready to exit process.\n\n");
+
   /*save the message of process that to be terminated*/
   temp = list_begin(&cur->parent->children);
   while (temp != list_end(&cur->parent->children))
@@ -250,8 +254,12 @@ void process_exit(void)
     t = list_next(t);
     unmap(m);
   }
+  printf("\nmap list cleaned.\n\n");
+
   /* Free the supplementary PT current process owns. */
   page_table_free();
+  printf("\npage table freed.\n\n");
+
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
   pd = cur->pagedir;
@@ -268,6 +276,7 @@ void process_exit(void)
     pagedir_activate(NULL);
     pagedir_destroy(pd);
   }
+  printf("\nexit finished.\n\n");
 }
 
 /* Sets up the CPU for running user code in the current
