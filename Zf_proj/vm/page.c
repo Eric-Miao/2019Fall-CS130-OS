@@ -10,7 +10,7 @@
 #include "threads/vaddr.h"
 
 #define STACK_MAX (1024 * 1024)
-#define STACK_BOTTOM 0x8048000
+/*#define STACK_BOTTOM 0x8048000*/
 /*allocate a page and add it into page table*/
 struct page *page_allocate(void *addr, bool writable)
 {
@@ -90,14 +90,12 @@ struct page *page_search(const void *address)
             struct page *target = hash_entry(key, struct page, pte);
             return target;
         }
-        /*if the given address is out of the current stack but inside the PUSHA range(32 bytes)*/
-        
-        //if ((p.addr > PHYS_BASE - STACK_MAX) && ((void *)curr->uesp - 32 < address))
-        
         /* Myx: I doubt this bracnch condition. because there is this stack_max of unknown.
         So I personally changed this to the below version, just check the bottom but not this 
         subtraction method of no reason for this stack_max. */
-        if ((p.addr > STACK_BOTTOM) && ((void *)curr->uesp - 32 < address))
+        /*if ((p.addr > STACK_BOTTOM) && ((void *)curr->uesp - 32 < address))*/
+        /*if the given address is out of the current stack but inside the PUSHA range(32 bytes)*/
+        if ((p.addr > PHYS_BASE - STACK_MAX) && ((void *)curr->uesp - 32 < address))
         {
             /*growth the stack*/
             struct page *growth = page_allocate(p.addr, false);
@@ -182,7 +180,7 @@ bool page_in(struct page *p)
     if (p->swap_sector != (block_sector_t)-1)
     {
         /* read the data in swap area out and write into page */
-        swap_disk_outto_page(p);
+        swap_disk_into_page(p);
     }
     /*if there is file to write*/
     else if (p->file != NULL)
@@ -225,7 +223,7 @@ bool page_out(struct page *p)
     if (p->file == NULL)
     {
         /*try to write page data into swap area*/
-        success = swap_page_into_disk(p);
+        success = swap_page_outto_disk(p);
         if (success)
         {
             p->frame = NULL;
@@ -244,7 +242,7 @@ bool page_out(struct page *p)
         if (p->swapable)
         {
             /*try to write data into swap area if swapabel*/
-            success = swap_page_into_disk(p);
+            success = swap_page_outto_disk(p);
         }
         else
         {

@@ -9,9 +9,11 @@
 #include "devices/shutdown.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
+#include "filesys/directory.h"
 #include "userprog/process.h"
 #include "devices/input.h"
 #include "threads/malloc.h"
+#include "vm/page.h"
 #define ARGS 3
 
 static void syscall_handler(struct intr_frame *);
@@ -25,15 +27,6 @@ struct file_to_fd
   int f_des;               /*file descriptor*/
   struct file *f_addr_ptr; /*file address*/
   struct list_elem f_list; /*fd list of thread*/
-};
-/*struct that stores map information and file pointer*/
-struct map
-{
-  int mapid;             /*map id*/
-  size_t page_count;     /*amount of pages*/
-  uint8_t *index;        /*begin position of map memory*/
-  struct file *file;     /*file address*/
-  struct list_elem elem; /*convenient for storing*/
 };
 /*function that get the arguments behind syscall from stack*/
 void get_args(struct intr_frame *f, int *args, int num)
@@ -282,7 +275,7 @@ syscall_handler(struct intr_frame *f UNUSED)
     /*call mmap()*/
     f->eax = mmap(args[0], (void *)args[1]);
   }
-  if (*(int *)f->esp == SYS_MUMMAP)
+  if (*(int *)f->esp == SYS_MUNMAP)
   {
     /*get map id*/
     get_args(f, &args[0], 1);
@@ -304,6 +297,31 @@ void halt()
   shutdown_power_off();
 }
 
+/*clear the map*/
+void unmap(struct map *m)
+{
+  struct thread *curr = thread_current();
+  /*remove the map from the process' map list*/
+  list_remove(&m->elem);
+  int i = 0;
+  /* For each page in the memory mapped file... */
+  for(; i < m->page_count; i++)
+  {
+    /* ...determine whether or not the page is dirty (modified). If so, write that page back out to disk. */
+    if (pagedir_is_dirty(curr->pagedir, ((const void *) ((m->index) + (PGSIZE * i)))))
+    {
+      lock_acquire (&lock_f);
+      file_write_at(m->file, (const void *) (m->index + (PGSIZE * i)), (PGSIZE*(m->page_count)), (PGSIZE * i));
+      lock_release (&lock_f);
+    }
+  }
+  int j = 0;
+  /**/
+  for(;j < m->page_count; j++)
+  {
+    page_eviction((void *) ((m->index) + (PGSIZE * j)));
+  }
+}
 /*sys call that terminates the current user program.
   and store its status in kernel*/
 void exit(int status)
@@ -627,11 +645,12 @@ int mmap(int fd, void *addr)
     /*return error*/
     return -1;
   }
+  struct file_to_fd *link;
   temp = list_front(&curr->file_des);
   /*search the file to fd list in current thread*/
   while (temp != NULL)
   {
-    struct file_to_fd *link = list_entry(temp, struct file_to_fd, f_list);
+    link = list_entry(temp, struct file_to_fd, f_list);
     /*if find the fd file*/
     if (link->f_des == fd)
     {
@@ -641,7 +660,7 @@ int mmap(int fd, void *addr)
   }
   lock_acquire(&lock_f);
   /*reopen the file*/
-  struct file *f = filesys_reopen(link->f_addr_ptr);
+  struct file *f = file_reopen(link->f_addr_ptr);
   lock_release(&lock_f);
   /*if file doesn't exist*/
   if (f == NULL)
@@ -670,11 +689,13 @@ int mmap(int fd, void *addr)
   while (f_length > 0)
   {
     struct page *p = page_allocate((uint8_t *)addr + f_offset, false);
+    /*if can not get page then clear the map*/
     if (p == NULL)
     {
       unmap(m);
       return -1;
     }
+    /*save the file info in page*/
     p->swapable = false;
     p->file = m->file;
     p->offset = f_offset;
@@ -690,10 +711,25 @@ int mmap(int fd, void *addr)
     f_length -= p->bytes;
     m->page_count++;
   }
-
   return m->mapid;
 }
 /*unmap the file*/
 void munmap(int mapid)
 {
+  struct thread *curr = thread_current();
+  struct list_elem *temp;
+  struct map *m;
+  /*search for the map with mapid*/
+  temp = list_front(&curr->map_list);
+  while (temp != NULL)
+  {
+    m = list_entry(temp, struct map, elem);
+    if (m->mapid == mapid)
+    {
+      break;
+    }
+    temp = temp->next;
+  }
+  /*clear map with mapid*/
+  unmap(m);
 }

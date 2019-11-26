@@ -8,6 +8,7 @@
 #include "userprog/gdt.h"
 #include "userprog/pagedir.h"
 #include "userprog/tss.h"
+#include "userprog/syscall.h"
 #include "filesys/directory.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
@@ -74,7 +75,7 @@ tid_t process_execute(const char *file_name)
   }
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create(name, PRI_DEFAULT, start_process, fn_copy);
-  
+
   /* Myx: I see u have done this free in start_process. */
   /*   if (tid == TID_ERROR)
   {
@@ -101,7 +102,7 @@ start_process(void *file_name_)
   struct thread *curr = thread_current();
 
   /* Somehow the *curr->page_table cannot be used in malloc. */
-  curr->page_table = malloc(sizeof (struct hash));
+  curr->page_table = malloc(sizeof(struct hash));
   if (curr->page_table == NULL)
     printf("page table malloc failed.\n");
   hash_init(curr->page_table, page_number, page_less, NULL);
@@ -242,7 +243,14 @@ void process_exit(void)
     file_allow_write(cur->FILE);
     file_close(cur->FILE);
   }
-
+  struct list_elem *t;
+  t = list_front(&cur->map_list);
+  while (t != NULL)
+  {
+    struct map *m = list_entry(t, struct map, elem);
+    t = list_next(t);
+    unmap(m);
+  }
   /* Free the supplementary PT current process owns. */
   page_table_free();
   /* Destroy the current process's page directory and switch back
@@ -606,7 +614,7 @@ setup_stack(void **esp, char *argv[], int argc)
   bool success = false;
 
   //Myx: kpage = palloc_get_page(PAL_USER | PAL_ZERO);
-  upage = page_allocate(((uint8_t *) PHYS_BASE) - PGSIZE, false);
+  upage = page_allocate(((uint8_t *)PHYS_BASE) - PGSIZE, false);
   if (upage != NULL)
   {
     /* Myx: Don't know if I should keep this statement. */
@@ -670,7 +678,7 @@ setup_stack(void **esp, char *argv[], int argc)
     //else
     /* Myx: No need to free this page because it failed to get
       a frame. */
-      //palloc_free_page(kpage);
+    //palloc_free_page(kpage);
   }
   return success;
 }
