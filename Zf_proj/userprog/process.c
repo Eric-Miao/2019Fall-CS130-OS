@@ -106,7 +106,6 @@ start_process(void *file_name_)
   if (curr->page_table == NULL)
     printf("page table malloc failed.\n");
   hash_init(curr->page_table, page_number, page_less, NULL);
-
   /* Initialize interrupt frame and load executable. */
   memset(&if_, 0, sizeof if_);
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
@@ -244,8 +243,8 @@ void process_exit(void)
     file_close(cur->FILE);
   }
   struct list_elem *t;
-  t = list_front(&cur->map_list);
-  while (t != NULL)
+  t = list_begin(&cur->map_list);
+  while (t != list_end(&cur->map_list))
   {
     struct map *m = list_entry(t, struct map, elem);
     t = list_next(t);
@@ -367,7 +366,6 @@ bool load(const char *file_name, void (**eip)(void), void **esp)
   off_t file_ofs;
   bool success = false;
   int i;
-
   /* Allocate and activate page directory. */
   t->pagedir = pagedir_create();
   if (t->pagedir == NULL)
@@ -467,7 +465,9 @@ bool load(const char *file_name, void (**eip)(void), void **esp)
 
   /* Set up stack. */
   if (!setup_stack(esp, argv, argc))
+  {
     goto done;
+  }
 
   /* Start address. */
   *eip = (void (*)(void))ehdr.e_entry;
@@ -674,6 +674,7 @@ setup_stack(void **esp, char *argv[], int argc)
       *esp = upage + PGSIZE;
 
       frame_unlock(upage->frame);
+      success = true;
     }
     //else
     /* Myx: No need to free this page because it failed to get
