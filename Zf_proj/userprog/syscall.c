@@ -84,7 +84,7 @@ syscall_handler(struct intr_frame *f UNUSED)
     /*terminate the program and free its resources */
     exit(-1);
   }
-  printf("syscall is %d\n",*(int *)f->esp);
+  //printf("syscall is %d\n",*(int *)f->esp);
   /*if syscall is halt then call it*/
   if (*(int *)f->esp == SYS_HALT)
   {

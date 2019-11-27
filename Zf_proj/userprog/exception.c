@@ -159,11 +159,11 @@ page_fault(struct intr_frame *f)
      curr->exitcode = -1;
      thread_exit();
   }*/
-   printf("Page fault at %p: %s error %s page in %s context.\n",
+/*    printf("Page fault at %p: %s error %s page in %s context.\n",
           fault_addr,
           not_present ? "not present" : "rights violation",
           write ? "writing" : "reading",
-          user ? "user" : "kernel");
+          user ? "user" : "kernel"); */
    /* Myx: Round down to the nearest virtual page base if needed. */
    //fault_page = pg_round_down(fault_addr);
    if (user)
