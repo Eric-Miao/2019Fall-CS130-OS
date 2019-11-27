@@ -355,6 +355,9 @@ struct Elf32_Phdr
 
 static bool setup_stack(void **esp, char *argv[], int argc);
 static bool validate_segment(const struct Elf32_Phdr *, struct file *);
+static bool load_segment_lazily(struct file *file, off_t ofs, uint8_t *upage,
+                         uint32_t read_bytes, uint32_t zero_bytes,
+                         bool writable);
 static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
                          uint32_t read_bytes, uint32_t zero_bytes,
                          bool writable);
@@ -473,7 +476,7 @@ bool load(const char *file_name, void (**eip)(void), void **esp)
         }
         printf("\n\nGuess before load_segment.\n\n\n\n");
 
-        if (!load_segment(file, file_page, (void *)mem_page,
+        if (!load_segment_lazily(file, file_page, (void *)mem_page,
                           read_bytes, zero_bytes, writable))
           goto done;
       }
@@ -560,22 +563,9 @@ validate_segment(const struct Elf32_Phdr *phdr, struct file *file)
   return true;
 }
 
-/* Loads a segment starting at offset OFS in FILE at address
-   UPAGE.  In total, READ_BYTES + ZERO_BYTES bytes of virtual
-   memory are initialized, as follows:
 
-        - READ_BYTES bytes at UPAGE must be read from FILE
-          starting at offset OFS.
-
-        - ZERO_BYTES bytes at UPAGE + READ_BYTES must be zeroed.
-
-   The pages initialized by this function must be writable by the
-   user process if WRITABLE is true, read-only otherwise.
-
-   Return true if successful, false if a memory allocation error
-   or disk read error occurs. */
 static bool
-load_segment(struct file *file, off_t ofs, uint8_t *upage,
+load_segment_lazily(struct file *file, off_t ofs, uint8_t *upage,
              uint32_t read_bytes, uint32_t zero_bytes, bool writable)
 {
   ASSERT((read_bytes + zero_bytes) % PGSIZE == 0);
@@ -597,22 +587,6 @@ load_segment(struct file *file, off_t ofs, uint8_t *upage,
     if (p == NULL)
       return false;
 
-    /* Load this page.
-    if (file_read(file, p, page_read_bytes) != (int)page_read_bytes)
-    {
-      page_free(p);
-      return false;
-    }
-    memset(p + page_read_bytes, 0, page_zero_bytes); */
-
-    /* Add the page to the process's address space.
-    if (!install_page(upage, p, writable))
-    {
-      page_free(p);
-      return false;
-    } 
-    */
-
     if (page_read_bytes > 0)
     {
       p->file = file;
@@ -622,11 +596,66 @@ load_segment(struct file *file, off_t ofs, uint8_t *upage,
     /* Advance. */
     read_bytes -= page_read_bytes;
     zero_bytes -= page_zero_bytes;
+    ofs += page_read_bytes;
     upage += PGSIZE;
   }
   return true;
 }
 
+/* Loads a segment starting at offset OFS in FILE at address
+   UPAGE.  In total, READ_BYTES + ZERO_BYTES bytes of virtual
+   memory are initialized, as follows:
+        - READ_BYTES bytes at UPAGE must be read from FILE
+          starting at offset OFS.
+        - ZERO_BYTES bytes at UPAGE + READ_BYTES must be zeroed.
+   The pages initialized by this function must be writable by the
+   user process if WRITABLE is true, read-only otherwise.
+   Return true if successful, false if a memory allocation error
+   or disk read error occurs. */
+static bool
+load_segment(struct file *file, off_t ofs, uint8_t *upage,
+             uint32_t read_bytes, uint32_t zero_bytes, bool writable)
+{
+  ASSERT((read_bytes + zero_bytes) % PGSIZE == 0);
+  ASSERT(pg_ofs(upage) == 0);
+  ASSERT(ofs % PGSIZE == 0);
+
+  file_seek(file, ofs);
+  while (read_bytes > 0 || zero_bytes > 0)
+  {
+    /* Calculate how to fill this page.
+         We will read PAGE_READ_BYTES bytes from FILE
+         and zero the final PAGE_ZERO_BYTES bytes. */
+    size_t page_read_bytes = read_bytes < PGSIZE ? read_bytes : PGSIZE;
+    size_t page_zero_bytes = PGSIZE - page_read_bytes;
+
+    /* Get a page of memory. */
+    uint8_t *p = palloc_get_page(PAL_USER);
+    //struct page *p = page_allocate(upage, !writable);
+    if (p == NULL)
+      return false;
+
+    /* Load this page.*/
+    if (file_read(file, p, page_read_bytes) != (int)page_read_bytes)
+    {
+      page_free(p);
+      return false;
+    }
+    memset(p + page_read_bytes, 0, page_zero_bytes);
+
+    /* Add the page to the process's address space.*/
+    if (!install_page(upage, p, writable))
+    {
+      page_free(p);
+      return false;
+    } 
+    /* Advance. */
+    read_bytes -= page_read_bytes;
+    zero_bytes -= page_zero_bytes;
+    upage += PGSIZE;
+  }
+  return true;
+}
 /* Create a minimal stack by mapping a zeroed page at the top of
    user virtual memory. */
 static bool
@@ -653,6 +682,7 @@ setup_stack(void **esp, char *argv[], int argc)
     {
       printf("\n\nGuess frame_allocate succeeded\n\n\n");
 
+      install_page(upage, upage->frame, true);
       /* The first page of stack stores the para etc. so should not
         be swapped or written to change. */
       upage->swapable = false;
@@ -670,25 +700,25 @@ setup_stack(void **esp, char *argv[], int argc)
       printf("\n\nGuess 2\n\n\n");
 
       /*add argument in command and program into stack from back*/
-      printf("\n\n there are %d args",argc);
+      printf("\n\nthere are %d args",argc);
       for (int i = argc - 1; i >= 0; i--)
       {
-        printf("\n\nloop %d\n\n\n",i);
+        printf("\n\nloop %d\n\n\n");
 
         /*allocate memory for str(add '\0' at last)*/
         *esp = *esp - sizeof(char) * (strlen(argv[i]) + 1);
-        printf("\n\nstep1 %d\n\n\n", i);
+        printf("\n\nstep1 %d\n\n\n" );
         length = sizeof(char) * (strlen(argv[i]) + 1);
-        printf("\n\nstep2 %d\n\n\n", i);
+        printf("\n\nstep2 %d\n\n\n");
         /*copy it into stack*/
-        printf(argv[i]);
+        printf(*esp);
         memcpy(*esp, argv[i], sizeof(char) * (strlen(argv[i]) + 1));
-        printf("\n\nstep3 %d\n\n\n", i);
+        printf("\n\nstep3 %d\n\n\n");
         /*add its ref to the arry*/
         arg_addr[i] = (uint32_t *)*esp;
-        printf("\n\nstep4 %d\n\n\n", i);
+        printf("\n\nstep4 %d\n\n\n");
         total_length = total_length + length;
-        printf("\n\nstep5 %d\n\n\n", i);
+        printf("\n\nstep5 %d\n\n\n");
       }
       printf("\n\nGuess 3\n\n\n");
 
@@ -717,7 +747,6 @@ setup_stack(void **esp, char *argv[], int argc)
       /*allocate and push fake "return adress" into stack*/
       *esp = *esp - 4;
       (*(int *)(*esp)) = 0;
-
       /* Here should repoint esp to the virtual memory. */
       //*esp = upage + PGSIZE;
       printf("\n\nGuess before frame unlock\n\n\n");
