@@ -669,6 +669,7 @@ setup_stack(void **esp, char *argv[], int argc)
   printf("\n\nGuess before page_allocate\n\n\n");
 
   upage = page_allocate(((uint8_t *)PHYS_BASE) - PGSIZE, false);
+  //upage = page_allocate(PHYS_BASE, false);
   if (upage != NULL)
   {
     /* Myx: Don't know if I should keep this statement. */
@@ -682,7 +683,8 @@ setup_stack(void **esp, char *argv[], int argc)
     {
       printf("\n\nGuess frame_allocate succeeded\n\n\n");
 
-      install_page(upage, upage->frame, true);
+      install_page(upage->addr, upage->frame->ker_base, true);
+      printf("\n\nGuess install page failed.\n\n");
       /* The first page of stack stores the para etc. so should not
         be swapped or written to change. */
       upage->swapable = false;
