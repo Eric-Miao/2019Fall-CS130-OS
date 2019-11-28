@@ -144,7 +144,8 @@ struct thread
     struct list f_list;              /*also store the file*/
     struct thread *parent;           /*the parent of current thread*/
     struct list_elem children_elem;  /*store the element in children list*/
-    struct semaphore waiting_parent; /*put parent to sleep when waiting for children*/
+    struct semaphore waiting_exit;   /*put parent to sleep when waiting for children*/
+    struct semaphore waiting_exec;    
 #endif
 
     /* Owned by thread.c. */

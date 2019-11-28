@@ -83,7 +83,7 @@ tid_t process_execute(const char *file_name)
     palloc_free_page(fn_copy);
   } */
   /*let current thread wait for child thread to finish loading*/
-  sema_down(&thread_current()->waiting_parent);
+  sema_down(&thread_current()->waiting_exec);
   /*loading failed*/
   if (thread_current()->success == 0)
     tid = -1;
@@ -121,7 +121,7 @@ start_process(void *file_name_)
     /*if loading failed send a signal to parent*/
     curr->parent->success = 0;
     /*wake up parent that is waiting*/
-    sema_up(&curr->parent->waiting_parent);
+    sema_up(&curr->parent->waiting_exec);
     /*terminate the fail child process*/
     thread_exit();
   }
@@ -130,7 +130,7 @@ start_process(void *file_name_)
     /*if loading succeed send a signal to parent*/
     curr->parent->success = 1;
     /*wake up parent that is waiting*/
-    sema_up(&curr->parent->waiting_parent);
+    sema_up(&curr->parent->waiting_exec);
     //printf("\n\n\nBelieve the load shall be succeeded.\n\n\n");
   }
   /* Start the user process by simulating a return from an
@@ -194,7 +194,7 @@ int process_wait(tid_t child_tid UNUSED)
   if (last->running == 0)
   {
     /*put the current thread to wait(sleep)*/
-    sema_down(&curr->waiting_parent);
+    sema_down(&curr->waiting_exit);
   }
   /*remove given thread from children list to avoid calling repeatedly*/
   int ret = last->code;
@@ -227,7 +227,7 @@ void process_exit(void)
   /*if there is parent waiting wake it up*/
   if (cur->parent->is_waiting == cur->tid)
   {
-    sema_up(&cur->parent->waiting_parent);
+    sema_up(&cur->parent->waiting_exit);
   }
   /*Process Termination Messages*/
   printf("%s: exit(%d)\n", cur->name, cur->exitcode);

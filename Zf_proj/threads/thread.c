@@ -653,9 +653,10 @@ init_thread(struct thread *t, const char *name, int priority)
   t->is_waiting = 0;
 
   /*initiate the waiting parent to 0*/
-  sema_init(&t->waiting_parent, 0);
-  /*initiate exit status with unexpect situation*/
-  t->exitcode = -1;
+  sema_init(&t->waiting_exit, 0);
+  sema_init(&t->waiting_exec, 0);
+      /*initiate exit status with unexpect situation*/
+      t->exitcode = -1;
 
   /* Proj3 initialization */
   t->pagedir = NULL;
