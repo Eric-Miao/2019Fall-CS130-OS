@@ -255,6 +255,10 @@ void process_exit(void)
   }
 
   /* Free the supplementary PT current process owns. */
+  for(int i = 0;i<100;i++)
+  {
+    continue;
+  }
   page_table_free();
 
   /* Destroy the current process's page directory and switch back
@@ -409,7 +413,7 @@ bool load(const char *file_name, void (**eip)(void), void **esp)
   /*printf("open is : %s/n",file);*/
   if (file == NULL)
   {
-    //printf("load: %s: open failed\n", argv[0]);
+    printf("load: %s: open failed\n", argv[0]);
     goto done;
   }
   //printf("\n\nGuess before file_read and memcmp.\n\n\n\n");
@@ -417,7 +421,7 @@ bool load(const char *file_name, void (**eip)(void), void **esp)
   /* Read and verify executable header. */
   if (file_read(file, &ehdr, sizeof ehdr) != sizeof ehdr || memcmp(ehdr.e_ident, "\177ELF\1\1\1", 7) || ehdr.e_type != 2 || ehdr.e_machine != 3 || ehdr.e_version != 1 || ehdr.e_phentsize != sizeof(struct Elf32_Phdr) || ehdr.e_phnum > 1024)
   {
-    //printf("load: %s: error loading executable\n", argv[0]);
+    printf("load: %s: error loading executable\n", argv[0]);
     goto done;
   }
 

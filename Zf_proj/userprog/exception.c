@@ -152,14 +152,13 @@ page_fault(struct intr_frame *f)
    not_present = (f->error_code & PF_P) == 0;
    write = (f->error_code & PF_W) != 0;
    user = (f->error_code & PF_U) != 0;
-   /* Myx: Keep the old exceptions and reconstruct a new one.
-  if(not_present||(is_kernel_vaddr(fault_addr)&&user))
-  {
-     struct thread *curr = thread_current();
-     curr->exitcode = -1;
-     thread_exit();
-  }*/
-/*    printf("Page fault at %p: %s error %s page in %s context.\n",
+   /* Myx: Keep the old exceptions and reconstruct a new one.*/
+   if (not_present && !user)
+      {
+         thread_current()->exitcode = -1;
+         thread_exit();
+      }
+   /*    printf("Page fault at %p: %s error %s page in %s context.\n",
           fault_addr,
           not_present ? "not present" : "rights violation",
           write ? "writing" : "reading",
