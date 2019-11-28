@@ -324,8 +324,8 @@ void process_exit(void)
   }
 
   /* Free the supplementary PT current process owns. */
-  /*timer_msleep(1000);*/
-  //page_table_free();
+  timer_msleep(1000);
+  page_table_free();
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
