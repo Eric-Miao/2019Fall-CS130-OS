@@ -155,8 +155,8 @@ page_fault(struct intr_frame *f)
    /* Myx: Keep the old exceptions and reconstruct a new one.*/
    if (not_present && !user)
       {
-         thread_current()->exitcode = -1;
-         thread_exit();
+        thread_current()->exitcode = -1;
+        thread_exit();
       }
    /*    printf("Page fault at %p: %s error %s page in %s context.\n",
           fault_addr,
@@ -170,8 +170,8 @@ page_fault(struct intr_frame *f)
       if (is_kernel_vaddr(fault_addr) ||
           (fault_addr < STACK_BOTTOM && is_user_vaddr(fault_addr)))
       {
-         thread_current()->exitcode = -1;
-         thread_exit();
+        thread_current()->exitcode = -1;
+        thread_exit();
       }
 
       if (not_present)

@@ -267,12 +267,24 @@ syscall_handler(struct intr_frame *f UNUSED)
   if (*(int *)f->esp == SYS_MMAP)
   {
     /*get file descriptor and address*/
-    get_args(f, &args[0], 2);
-    if (!is_user_vaddr((const void *)args[1]) || (const void *)args[1] == NULL || (const void *)args[1] < (void *)0x08048000)
+    int *temp;
+    int i = 0;
+    for (; i < 2; i++)
     {
-      /*terminate the program and free its resources */
-      exit(-1);
+      temp = (int *)f->esp + i + 1;
+      /*check the validity*/
+      /*store to the arg array we created before*/
+      args[i] = *temp;
     }
+    // if (!is_user_vaddr((const void *)args[0]) || (const void *)args[0] == NULL || (const void *)args[0] < (void *)0x08048000)
+    // {
+    //   exit(-1);
+    // }
+    // if (!is_user_vaddr((const void *)args[1]) || (const void *)args[1] < (void *)0x08048000)
+    // {
+    //   /*terminate the program and free its resources */
+    //   exit(-1);
+    // }
     /*call mmap()*/
     f->eax = mmap(args[0], (void *)args[1]);
   }
