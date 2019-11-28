@@ -19,6 +19,7 @@
 #include "threads/thread.h"
 #include "threads/vaddr.h"
 #include "lib/kernel/hash.h"
+#include "devices/timer.h"
 #include "vm/page.h"
 #include "vm/frame.h"
 #include "vm/swap.h"
@@ -255,10 +256,7 @@ void process_exit(void)
   }
 
   /* Free the supplementary PT current process owns. */
-  for(int i = 0;i<100;i++)
-  {
-    continue;
-  }
+  timer_msleep (1000);
   page_table_free();
 
   /* Destroy the current process's page directory and switch back
