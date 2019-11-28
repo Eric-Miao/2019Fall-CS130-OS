@@ -85,9 +85,6 @@ syscall_handler(struct intr_frame *f UNUSED)
     exit(-1);
   }
   //printf("syscall is %d\n",*(int *)f->esp);
-
- // timer_msleep (1000);
-
   /*if syscall is halt then call it*/
   if (*(int *)f->esp == SYS_HALT)
   {
@@ -676,6 +673,8 @@ int mmap(int fd, void *addr)
   /*if we can not create a map or address invalid return -1*/
   if (m == NULL || addr == NULL || pg_ofs(addr) != 0)
   {
+    free(m);
+    /*printf("here\n");*/
     return -1;
   }
   /*initiate the map and push it to map list*/

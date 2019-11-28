@@ -244,11 +244,6 @@ tid_t thread_create(const char *name, int priority,
   /* Initialize thread. */
   init_thread(t, name, priority);
   tid = t->tid = allocate_tid();
-  struct last_words* lw = malloc(sizeof(*lw));
-  lw->tid = tid;
-  lw->code = t->exitcode;
-  lw->running = 0;
-  list_push_back (&running_thread()->children, &lw->ele);
 
   old_level = intr_disable();
   /* Stack frame for kernel_thread(). */
@@ -651,13 +646,11 @@ init_thread(struct thread *t, const char *name, int priority)
   /*let the first thread be the parent of itself*/
   t->parent = running_thread();
   t->is_waiting = 0;
-
+  t->son_info = NULL;
   /*initiate the waiting parent to 0*/
-  sema_init(&t->waiting_exit, 0);
-  sema_init(&t->waiting_exec, 0);
-      /*initiate exit status with unexpect situation*/
-      t->exitcode = -1;
-
+  sema_init(&t->waiting_parent, 0);
+  /*initiate exit status with unexpect situation*/
+  t->exitcode = -1;
   /* Proj3 initialization */
   t->pagedir = NULL;
   t->page_table = NULL;

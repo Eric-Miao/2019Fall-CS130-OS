@@ -39,6 +39,13 @@ struct file_to_fd
   struct file *f_addr_ptr; /*file address*/
   struct list_elem f_list; /*fd list of thread*/
 };
+struct execute_status
+{
+  const char *ELF;               /*program to execute*/
+  struct semaphore waiting_exec; /*for parent to wait children to load*/
+  struct last_words *son_info;    /*son's info*/
+  bool load_success;             /*children successfully loaded*/
+};
 /*search thread by tid, wrapped in order to use foreach()*/
 static void
 search_thread(struct thread *t, void *aux UNUSED)
@@ -55,39 +62,41 @@ search_thread(struct thread *t, void *aux UNUSED)
    thread id, or TID_ERROR if the thread cannot be created. */
 tid_t process_execute(const char *file_name)
 {
-  char *fn_copy;
+  char name[16];
+  char *save_ptr;
   tid_t tid;
-
+  struct execute_status execute;
+  struct thread *cur = thread_current();
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
-  fn_copy = palloc_get_page(0);
-  if (fn_copy == NULL)
-    return TID_ERROR;
-  strlcpy(fn_copy, file_name, PGSIZE);
+  execute.ELF = file_name;
+  sema_init(&execute.waiting_exec, 0);
+  strlcpy(name, file_name, sizeof name);
   /*create a new string to store the program name*/
-  char *save_ptr;
-  char *name;
-  struct thread *cur = thread_current();
   /*strtok_r() refer to 'lib/string.c' line235*/
-  name = strtok_r((char *)file_name, " ", &save_ptr);
-  if (name == NULL)
-  {
-    return TID_ERROR;
-  }
+  strtok_r(name, " ", &save_ptr);
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create(name, PRI_DEFAULT, start_process, fn_copy);
-
+  tid = thread_create(name, PRI_DEFAULT, start_process, &execute);
   /* Myx: I see u have done this free in start_process. */
   /*   if (tid == TID_ERROR)
   {
     palloc_free_page(fn_copy);
   } */
   /*let current thread wait for child thread to finish loading*/
-  sema_down(&thread_current()->waiting_exec);
-  /*loading failed*/
-  if (thread_current()->success == 0)
-    tid = -1;
 
+  if (tid != TID_ERROR)
+  {
+    sema_down(&execute.waiting_exec);
+    if (execute.load_success)
+    {
+      list_push_back(&thread_current()->children, &execute.son_info->ele);
+    }
+    else
+    {
+      tid = TID_ERROR;
+    }
+  }
+  /*loading failed*/
   return tid;
 }
 
@@ -96,7 +105,7 @@ tid_t process_execute(const char *file_name)
 static void
 start_process(void *file_name_)
 {
-  char *file_name = file_name_;
+  struct execute_status *file_name = file_name_;
   struct intr_frame if_;
   /*int load_status;*/
   bool success;
@@ -112,26 +121,46 @@ start_process(void *file_name_)
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-  success = load(file_name, &if_.eip, &if_.esp);
+  success = load(file_name->ELF, &if_.eip, &if_.esp);
   //printf("\n\n\nBelieve the load shall be succeeded.\n\n\n");
-
-  palloc_free_page(file_name);
-  if (!success)
-  {
-    /*if loading failed send a signal to parent*/
-    curr->parent->success = 0;
-    /*wake up parent that is waiting*/
-    sema_up(&curr->parent->waiting_exec);
-    /*terminate the fail child process*/
-    thread_exit();
+  /*if (!success)
+  {*/
+  /*if loading failed send a signal to parent*/
+  /*curr->parent->success = 0;*/
+  /*wake up parent that is waiting*/
+  /*sema_up(&curr->parent->waiting_parent);*/
+  /*terminate the fail child process*/
+  /*thread_exit();
   }
   else
+  {*/
+  /*if loading succeed send a signal to parent*/
+  /*curr->parent->success = 1;*/
+  /*wake up parent that is waiting*/
+  /*sema_up(&curr->parent->waiting_parent);*/
+  //printf("\n\n\nBelieve the load shall be succeeded.\n\n\n");
+  /*}*/
+  if (success)
   {
-    /*if loading succeed send a signal to parent*/
-    curr->parent->success = 1;
-    /*wake up parent that is waiting*/
-    sema_up(&curr->parent->waiting_exec);
-    //printf("\n\n\nBelieve the load shall be succeeded.\n\n\n");
+    file_name->son_info = thread_current()->son_info = malloc(sizeof *file_name->son_info);
+    success = file_name->son_info != NULL;
+  }
+
+  /* Initialize wait_status. */
+  if (success)
+  {
+    lock_init(&file_name->son_info->exit_lock);
+    file_name->son_info->under_running = 2;
+    file_name->son_info->tid = thread_current()->tid;
+    sema_init(&file_name->son_info->waiting_exit, 0);
+  }
+
+  /* Notify parent thread and clean up. */
+  file_name->load_success = success;
+  sema_up(&file_name->waiting_exec);
+  if (!success)
+  {
+    thread_exit();
   }
   /* Start the user process by simulating a return from an
      interrupt, implemented by intr_exit (in
@@ -160,9 +189,7 @@ int process_wait(tid_t child_tid UNUSED)
 {
   /*temp to store the element when going through*/
   struct list_elem *temp;
-  struct list_elem *temp_1;
   /*message of child thread*/
-  struct last_words *last;
   struct thread *curr = thread_current();
   /*if there is no children*/
   if (list_empty(&curr->children))
@@ -174,63 +201,102 @@ int process_wait(tid_t child_tid UNUSED)
   /*search if the thread given is the child of current process*/
   while (temp != list_end(&curr->children))
   {
-    struct last_words *words = list_entry(temp, struct last_words, ele);
+    struct last_words *child_info = list_entry(temp, struct last_words, ele);
     /*store the target child process into the message passing station*/
-    if (words->tid == child_tid)
+    if (child_info->tid == child_tid)
     {
-      last = words;
-      temp_1 = temp;
+      int exitcode;
+      list_remove(temp);
+      sema_down(&child_info->waiting_exit);
+      exitcode = child_info->code;
+      int new_under_running;
+      lock_acquire(&child_info->exit_lock);
+      new_under_running = --child_info->under_running;
+      lock_release(&child_info->exit_lock);
+      if (new_under_running == 0)
+      {
+        free(child_info);
+      }
+      return exitcode;
     }
     temp = list_next(temp);
   }
   /*if it's not a child of the calling process*/
-  if (last == NULL || temp_1 == NULL)
+  /*if (last == NULL || temp_1 == NULL)
   {
     return -1;
-  }
+  }*/
   /*let parent know which child it is waiting for*/
-  curr->is_waiting = last->tid;
+  /*curr->is_waiting = last->tid;*/
   /*if the child is not terminated*/
-  if (last->running == 0)
-  {
+  /*if (last->running == 0)
+  {*/
     /*put the current thread to wait(sleep)*/
-    sema_down(&curr->waiting_exit);
-  }
+    /*sema_down(&curr->waiting_parent);
+  }*/
   /*remove given thread from children list to avoid calling repeatedly*/
-  int ret = last->code;
-  list_remove(temp_1);
-  return ret;
+  /*int ret = last->code;
+  list_remove(temp_1);*/
+  return -1;
 }
 
 /* Free the current process's resources. */
 void process_exit(void)
 {
-  //printf("\n\nready to exit.\n\n\n");
-  //timer_msleep(100);
   struct thread *cur = thread_current();
   uint32_t *pd;
   struct list_elem *temp;
   /*save the message of process that to be terminated*/
-  temp = list_begin(&cur->parent->children);
+  /*temp = list_begin(&cur->parent->children);
   while (temp != list_end(&cur->parent->children))
   {
     struct last_words *l_w = list_entry(temp, struct last_words, ele);
     if (l_w->tid == cur->tid)
-    {
+    {*/
       /*set status to terminated*/
-      l_w->running = 1;
+      /*l_w->running = 1;*/
       /*save exitcode*/
-      l_w->code = cur->exitcode;
+      /*l_w->code = cur->exitcode;
     }
     temp = list_next(temp);
-  }
+  }*/
   /*if there is parent waiting wake it up*/
-  if (cur->parent->is_waiting == cur->tid)
+  /*if (cur->parent->is_waiting == cur->tid)
   {
-    sema_up(&cur->parent->waiting_exit);
-  }
+    sema_up(&cur->parent->waiting_parent);
+  }*/
   /*Process Termination Messages*/
   printf("%s: exit(%d)\n", cur->name, cur->exitcode);
+  if (cur->son_info != NULL) 
+    {
+      struct last_words *child_infom = cur->son_info;
+      child_infom->code = cur->exitcode;
+      sema_up (&child_infom->waiting_exit);
+      int rencent_under_running;
+      lock_acquire(&child_infom->exit_lock);
+      rencent_under_running = --child_infom->under_running;
+      lock_release(&child_infom->exit_lock);
+      if (rencent_under_running == 0)
+      {
+        free(child_infom);
+      }
+    }
+
+  temp = list_begin (&cur->children);
+  while(temp != list_end (&cur->children))
+    {
+      struct last_words *child_info = list_entry (temp, struct last_words, ele);
+      temp = list_remove (temp);
+      int new_under_running;
+      lock_acquire(&child_info->exit_lock);
+      new_under_running = --child_info->under_running;
+      lock_release(&child_info->exit_lock);
+      if (new_under_running == 0)
+      {
+        free(child_info);
+      }
+    }
+
   /*close the files*/
   struct list_elem *el;
   while (!list_empty(&cur->file_des))
@@ -258,8 +324,8 @@ void process_exit(void)
   }
 
   /* Free the supplementary PT current process owns. */
-  timer_msleep(1000);
-  page_table_free();
+  /*timer_msleep(1000);*/
+  //page_table_free();
 
   /* Destroy the current process's page directory and switch back
      to the kernel-only page directory. */
@@ -360,8 +426,8 @@ struct Elf32_Phdr
 static bool setup_stack(void **esp, char *argv[], int argc);
 static bool validate_segment(const struct Elf32_Phdr *, struct file *);
 static bool load_segment_lazily(struct file *file, off_t ofs, uint8_t *upage,
-                         uint32_t read_bytes, uint32_t zero_bytes,
-                         bool writable);
+                                uint32_t read_bytes, uint32_t zero_bytes,
+                                bool writable);
 static bool load_segment(struct file *file, off_t ofs, uint8_t *upage,
                          uint32_t read_bytes, uint32_t zero_bytes,
                          bool writable);
@@ -481,7 +547,7 @@ bool load(const char *file_name, void (**eip)(void), void **esp)
         //printf("\n\nGuess before load_segment.\n\n\n\n");
 
         if (!load_segment_lazily(file, file_page, (void *)mem_page,
-                          read_bytes, zero_bytes, writable))
+                                 read_bytes, zero_bytes, writable))
           goto done;
       }
       else
@@ -567,10 +633,9 @@ validate_segment(const struct Elf32_Phdr *phdr, struct file *file)
   return true;
 }
 
-
 static bool
 load_segment_lazily(struct file *file, off_t ofs, uint8_t *upage,
-             uint32_t read_bytes, uint32_t zero_bytes, bool writable)
+                    uint32_t read_bytes, uint32_t zero_bytes, bool writable)
 {
   ASSERT((read_bytes + zero_bytes) % PGSIZE == 0);
   ASSERT(pg_ofs(upage) == 0);
@@ -652,7 +717,7 @@ load_segment(struct file *file, off_t ofs, uint8_t *upage,
     {
       page_free(p);
       return false;
-    } 
+    }
     /* Advance. */
     read_bytes -= page_read_bytes;
     zero_bytes -= page_zero_bytes;
@@ -678,7 +743,7 @@ setup_stack(void **esp, char *argv[], int argc)
   {
     /* Myx: Don't know if I should keep this statement. */
     //success = install_page(((uint8_t *)PHYS_BASE) - PGSIZE, kpage, true);
-   // printf("\n\nGuess before frame allocate.\n\n\n");
+    // printf("\n\nGuess before frame allocate.\n\n\n");
 
     upage->frame = frame_allocate(upage);
     //printf("\n\nGuess after frame_allocate\n\n\n");

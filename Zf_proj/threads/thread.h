@@ -144,8 +144,8 @@ struct thread
     struct list f_list;              /*also store the file*/
     struct thread *parent;           /*the parent of current thread*/
     struct list_elem children_elem;  /*store the element in children list*/
-    struct semaphore waiting_exit;   /*put parent to sleep when waiting for children*/
-    struct semaphore waiting_exec;    
+    struct last_words *son_info;     /*store the info of current thread's son*/
+    struct semaphore waiting_parent; /*put parent to sleep when waiting for children*/
 #endif
 
     /* Owned by thread.c. */
@@ -155,10 +155,12 @@ struct thread
 /*struct to store the info of terminated child thread*/
 struct last_words
 {
-    int tid;
-    int code;
+    int tid;                        /*child thread tid*/
+    int code;                       /*child thread exit code*/
+    int under_running;              /*termination status*/
+    struct semaphore waiting_exit;  /*semaphore determing whether to wait*/
+    struct lock exit_lock;          /*lock the under_running variable when exit*/
     struct list_elem ele;
-    int running; /*termination status*/
 };
 /* If false (default), use round-robin scheduler.
    If true, use multi-level feedback queue scheduler.
