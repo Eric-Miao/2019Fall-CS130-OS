@@ -17,6 +17,7 @@ static struct lock frame_table_lock;
 /* The loop indicator for eviction clock. */
 static size_t clock_loop;
 
+int cnt;
 /* Initialize the whole frame system. */
 void *
 frame_init()
@@ -32,11 +33,15 @@ frame_init()
         new_frame->page = NULL;
         lock_init(&new_frame->frame_lock);
         list_push_back(&frame_table, &new_frame->fte);
-        ASSERT(!list_empty(&frame_table));
         phys_mem = palloc_get_page(PAL_USER);
-        ASSERT(!list_empty(&frame_table));
     }
     ASSERT(!list_empty(&frame_table));
+}
+
+size_t
+frame_table_size()
+{
+  return list_size(&frame_table);
 }
 
 bool 

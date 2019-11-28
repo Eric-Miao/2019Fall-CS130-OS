@@ -205,6 +205,8 @@ int process_wait(tid_t child_tid UNUSED)
 /* Free the current process's resources. */
 void process_exit(void)
 {
+  //printf("\n\nready to exit.\n\n\n");
+  //timer_msleep(100);
   struct thread *cur = thread_current();
   uint32_t *pd;
   struct list_elem *temp;
@@ -256,7 +258,7 @@ void process_exit(void)
   }
 
   /* Free the supplementary PT current process owns. */
-  timer_msleep (1000);
+  timer_msleep(1000);
   page_table_free();
 
   /* Destroy the current process's page directory and switch back

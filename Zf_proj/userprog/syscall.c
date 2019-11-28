@@ -85,6 +85,9 @@ syscall_handler(struct intr_frame *f UNUSED)
     exit(-1);
   }
   //printf("syscall is %d\n",*(int *)f->esp);
+
+ // timer_msleep (1000);
+
   /*if syscall is halt then call it*/
   if (*(int *)f->esp == SYS_HALT)
   {

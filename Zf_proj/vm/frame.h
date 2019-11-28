@@ -19,5 +19,6 @@ struct frame* frame_allocate (struct page *);
 bool frame_free (struct frame *);
 bool frame_lock (struct frame*);
 bool frame_unlock (struct frame*);
+size_t frame_table_size(void);
 
 #endif
