@@ -552,13 +552,17 @@ int read(int fd, void *buffer, unsigned size)
       else if (p == NULL && (buff >= (void *)curr->uesp - 32))
       {
         /*printf("\nin growth\n");*/
-        struct page *growth_page = page_allocate(p->addr, false);
-        if (!growth_page)
+        struct page *growth_page = page_allocate(buff, false);
+        if (!growth_page->frame)
         {
           growth_page->frame = frame_allocate(growth_page);
           if (growth_page->frame != NULL)
           {
             pagedir_set_page(curr->pagedir, growth_page->addr, growth_page->frame->ker_base, true);
+          }
+          else
+          {
+            exit(-1);
           }
         }
       }
