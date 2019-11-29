@@ -192,51 +192,12 @@ void lock_init(struct lock *lock)
    we need to sleep. */
 void lock_acquire(struct lock *lock)
 {
-  /*struct lock *lock_temp;*/
-  /*Get the running thread first*/
-  /*struct thread *current = thread_current();*/
   ASSERT(lock != NULL);
   ASSERT(!intr_context());
   ASSERT(!lock_held_by_current_thread(lock));
-  /*Someone hold the lock*/
-  /*if (lock->holder != NULL && !thread_mlfqs)
-  {*/
-    /*current thread is waiting for this lock to be released*/
-    /*current->stuck_lock = lock;*/
-    /*save the original lock in a temp*/
-    /*lock_temp = lock;*/
-    /*while there is still lock waiting and the current thread's priority is higher*/
-    /*while (lock_temp != NULL && current->priority > lock_temp->highest_priority)
-    {*/
-      /*let current thread's priority be the lock's highest priority*/
-      /*lock_temp->highest_priority = current->priority;*/
-      /*donate priority to let current thread with lock to release*/
-      /*donation(lock_temp->holder);*/
-      /*let current lock be the lock with less priority*/
-      /*lock_temp = lock_temp->holder->stuck_lock;
-    }
-  }*/
-  sema_down(&lock->semaphore);
-  /*enum intr_level old_level = old_level = intr_disable();*/
-  /*reget the current thread*/
-  /*current = thread_current();*/
-  /*if there is nothing invoke advanced schedular*/
-  /*if (!thread_mlfqs)
-  {*/
-    /*acquire the lock*/
-    /*current->stuck_lock = NULL;
-    lock->highest_priority = current->priority;*/
-    /*reorder the lock by priority*/
-    /*list_insert_ordered(&thread_current()->locks, &lock->donators, is_priority_less, NULL);*/
-    /*if (lock->highest_priority > thread_current()->priority)
-    {
-      thread_current()->priority = lock->highest_priority;
-      thread_yield();
-    }*/
-  /*}*/
-  lock->holder = thread_current();
 
-  /*intr_set_level(old_level);*/
+  sema_down(&lock->semaphore);
+  lock->holder = thread_current();
 }
 
 /* Tries to acquires LOCK and returns true if successful or false

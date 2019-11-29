@@ -14,7 +14,6 @@
 /*allocate a page and add it into page table*/
 struct page *page_allocate(void *addr, bool writable)
 {
-    //printf("\nin allocate\n");
     struct thread *curr = thread_current();
     /*malloc memory for new page*/
     struct page *new_page = malloc(sizeof *new_page);
