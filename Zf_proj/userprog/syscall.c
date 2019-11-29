@@ -568,6 +568,7 @@ int read(int fd, void *buffer, unsigned size)
       }
       else
       {
+        printf("\n in here \n");
         exit(-1);
       }
     }
