@@ -116,7 +116,6 @@ frame_evict(struct page *p)
             lock_release(&f->frame_lock);
             continue;
         }
-
         /* If the page is not NULL | not recently accessed  
             try to evivt it and return the frame if success.
             Otherwise return NULL */

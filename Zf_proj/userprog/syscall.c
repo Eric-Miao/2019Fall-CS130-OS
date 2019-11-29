@@ -547,9 +547,11 @@ int read(int fd, void *buffer, unsigned size)
       if (p != NULL && p->frame == NULL)
       {
         page_in(p);
+        pagedir_set_page(curr->pagedir, p->addr, p->frame->ker_base, !p->writable);
       }
-      else if (p == NULL && ((p->addr > PHYS_BASE - STACK_MAX) && (buff >= (void *)curr->uesp - 32)))
+      else if (p == NULL && (buff >= (void *)curr->uesp - 32))
       {
+        /*printf("\nin growth\n");*/
         struct page *growth_page = page_allocate(p->addr, false);
         if (!growth_page)
         {
