@@ -210,14 +210,6 @@ syscall_handler(struct intr_frame *f UNUSED)
     is_buffer_valid((void *)args[1], args[2]);
     struct thread *curr = thread_current();
     /*check if the address is mapped to the physical address*/
-    physical_page = pagedir_get_page(curr->pagedir, (const void *)args[1]);
-    /*if not then terminate the program and free its resources*/
-    if (physical_page == NULL)
-    {
-      exit(-1);
-    }
-    /*send physical page pointer back to args*/
-    args[1] = (int)physical_page;
     /*store in exa*/
     f->eax = read(args[0], (void *)args[1], (unsigned)args[2]);
   }
@@ -230,14 +222,7 @@ syscall_handler(struct intr_frame *f UNUSED)
     is_buffer_valid((void *)args[1], args[2]);
     struct thread *curr = thread_current();
     /*check if the address is mapped to the physical address*/
-    physical_page = pagedir_get_page(curr->pagedir, (const void *)args[1]);
-    /*if not then terminate the program and free its resources*/
-    if (physical_page == NULL)
-    {
-      exit(-1);
-    }
     /*send physical page pointer back to args*/
-    args[1] = (int)physical_page;
     /*store in exa*/
     f->eax = write(args[0], (const void *)args[1], (unsigned)args[2]);
   }
@@ -367,6 +352,11 @@ int write(int fd, const void *buffer, unsigned size)
         exit(-1);
       }
     }
+    else
+    {
+      exit(-1);
+    }
+    
     if (buff_size > PGSIZE)
     {
       buff += PGSIZE;
@@ -403,8 +393,8 @@ int write(int fd, const void *buffer, unsigned size)
     return -1;
   }
   /*get the current thread's fd*/
-  temp = list_front(&curr->file_des);
-  while (temp != NULL)
+  temp = list_begin(&curr->file_des);
+  while (temp != list_end(&curr->file_des))
   {
     /*store the file descriptor of current thread*/
     struct file_to_fd *thread_f = list_entry(temp, struct file_to_fd, f_list);
@@ -417,7 +407,7 @@ int write(int fd, const void *buffer, unsigned size)
       /*return bytes be sucessfully written*/
       return bytes_written;
     }
-    temp = temp->next;
+    temp = list_next(temp);
   }
   /*release anyway before function end*/
   lock_release(&lock_f);
@@ -542,6 +532,7 @@ int read(int fd, void *buffer, unsigned size)
   void *buff = buffer;
   while (buff != NULL)
   {
+
     if (buff == NULL || !is_user_vaddr(buff))
     {
       exit(-1);
@@ -568,7 +559,6 @@ int read(int fd, void *buffer, unsigned size)
       }
       else
       {
-        printf("\n in here \n");
         exit(-1);
       }
     }
@@ -610,9 +600,9 @@ int read(int fd, void *buffer, unsigned size)
   }
   if (fd != 1 && fd != 0)
   {
-    temp = list_front(&curr->file_des);
+    temp = list_begin(&curr->file_des);
     /*search the file to fd list in current thread*/
-    while (temp != NULL)
+    while (temp != list_end(&curr->file_des))
     {
       struct file_to_fd *link = list_entry(temp, struct file_to_fd, f_list);
       /*if find the fd file*/
@@ -620,7 +610,7 @@ int read(int fd, void *buffer, unsigned size)
       {
         bytes_read = file_read(link->f_addr_ptr, buffer, size);
       }
-      temp = temp->next;
+      temp = list_begin(temp);
     }
   }
   /*can't find fd file*/
