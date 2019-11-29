@@ -84,7 +84,7 @@ syscall_handler(struct intr_frame *f UNUSED)
     /*terminate the program and free its resources */
     exit(-1);
   }
-  //printf("syscall is %d\n",*(int *)f->esp);
+  printf("syscall is %d\n",*(int *)f->esp);
   /*if syscall is halt then call it*/
   if (*(int *)f->esp == SYS_HALT)
   {
@@ -267,24 +267,12 @@ syscall_handler(struct intr_frame *f UNUSED)
   if (*(int *)f->esp == SYS_MMAP)
   {
     /*get file descriptor and address*/
-    int *temp;
-    int i = 0;
-    for (; i < 2; i++)
+    get_args(f, &args[0], 2);
+    if (!is_user_vaddr((const void *)args[1]) || (const void *)args[1] == NULL || (const void *)args[1] < (void *)0x08048000)
     {
-      temp = (int *)f->esp + i + 1;
-      /*check the validity*/
-      /*store to the arg array we created before*/
-      args[i] = *temp;
+      /*terminate the program and free its resources */
+      exit(-1);
     }
-    // if (!is_user_vaddr((const void *)args[0]) || (const void *)args[0] == NULL || (const void *)args[0] < (void *)0x08048000)
-    // {
-    //   exit(-1);
-    // }
-    // if (!is_user_vaddr((const void *)args[1]) || (const void *)args[1] < (void *)0x08048000)
-    // {
-    //   /*terminate the program and free its resources */
-    //   exit(-1);
-    // }
     /*call mmap()*/
     f->eax = mmap(args[0], (void *)args[1]);
   }
@@ -318,21 +306,21 @@ void unmap(struct map *m)
   list_remove(&m->elem);
   int i = 0;
   /* For each page in the memory mapped file... */
-  for(; i < m->page_count; i++)
+  for (; i < m->page_count; i++)
   {
     /* ...determine whether or not the page is dirty (modified). If so, write that page back out to disk. */
-    if (pagedir_is_dirty(curr->pagedir, ((const void *) ((m->index) + (PGSIZE * i)))))
+    if (pagedir_is_dirty(curr->pagedir, ((const void *)((m->index) + (PGSIZE * i)))))
     {
-      lock_acquire (&lock_f);
-      file_write_at(m->file, (const void *) (m->index + (PGSIZE * i)), (PGSIZE*(m->page_count)), (PGSIZE * i));
-      lock_release (&lock_f);
+      lock_acquire(&lock_f);
+      file_write_at(m->file, (const void *)(m->index + (PGSIZE * i)), (PGSIZE * (m->page_count)), (PGSIZE * i));
+      lock_release(&lock_f);
     }
   }
   int j = 0;
   /**/
-  for(;j < m->page_count; j++)
+  for (; j < m->page_count; j++)
   {
-    page_eviction((void *) ((m->index) + (PGSIZE * j)));
+    page_eviction((void *)((m->index) + (PGSIZE * j)));
   }
 }
 /*sys call that terminates the current user program.
@@ -352,48 +340,82 @@ void exit(int status)
   actually written, which may be less than size if some bytes could not be written*/
 int write(int fd, const void *buffer, unsigned size)
 {
+  printf("\nin write\n");
   struct list_elem *temp;
-  /*acquire the lock that ensure that only one process is writing on file system*/
-  lock_acquire(&lock_f);
-  /*if FD is i then write to console*/
-  if (fd == 1)
+  uint8_t *buff = buffer;
+  int byte_written = 0;
+  while (size > 0)
   {
-    /*see "lib/kernel/console.c" line 151 for detail of writing func*/
-    putbuf(buffer, size);
-    /*release the lock after writing*/
-    lock_release(&lock_f);
-    /*return size since it's writing to STDOUT*/
-    return size;
-  }
-  struct thread *curr = thread_current();
-  /*if it is STDIN or no file then return 0*/
-  if (fd == 0 || list_empty(&curr->file_des))
-  {
-    /*release the lock since no writing*/
-    lock_release(&lock_f);
-    return 0;
-  }
-  /*get the current thread's fd*/
-  temp = list_front(&curr->file_des);
-  while (temp != NULL)
-  {
-    /*store the file descriptor of current thread*/
-    struct file_to_fd *thread_f = list_entry(temp, struct file_to_fd, f_list);
-    /*search the fd and write*/
-    if (thread_f->f_des == fd)
+    size_t page_blank = PGSIZE - pg_ofs(buff);
+    size_t actual_write;
+    off_t byte_retby_filesys;
+    if (page_blank > size)
     {
-      int bytes_written = (int)file_write(thread_f->f_addr_ptr, buffer, size);
-      /*release the lock after write*/
-      lock_release(&lock_f);
-      /*return bytes be sucessfully written*/
-      return bytes_written;
+      actual_write = size;
     }
-    temp = temp->next;
+    else
+    {
+      actual_write = page_blank;
+    }
+    if (!page_lock(buff, false))
+    {
+      printf("\nin here\n");
+      thread_exit();
+    }
+    /*acquire the lock that ensure that only one process is writing on file system*/
+    lock_acquire(&lock_f);
+    /*if FD is i then write to console*/
+    if (fd == 1)
+    {
+      /*see "lib/kernel/console.c" line 151 for detail of writing func*/
+      putbuf((char *)buff, actual_write);
+      byte_retby_filesys = actual_write;
+    }
+    struct thread *curr = thread_current();
+    /*if it is STDIN or no file then return 0*/
+    if (fd == 0 || list_empty(&curr->file_des))
+    {
+      /*release the lock since no writing*/
+      lock_release(&lock_f);
+      page_unlock(buff);
+      return -1;
+    }
+    /*get the current thread's fd*/
+    if (fd != 1 && fd != 0)
+    {
+      temp = list_front(&curr->file_des);
+      while (temp != NULL)
+      {
+        /*store the file descriptor of current thread*/
+        struct file_to_fd *thread_f = list_entry(temp, struct file_to_fd, f_list);
+        /*search the fd and write*/
+        if (thread_f->f_des == fd)
+        {
+          byte_retby_filesys = file_write(thread_f->f_addr_ptr, buffer, size);
+        }
+        temp = temp->next;
+      }
+    }
+    /*release anyway before function end*/
+    lock_release(&lock_f);
+    page_unlock(buff);
+    if (byte_retby_filesys < 0)
+    {
+      if (byte_written == 0)
+      {
+        byte_written = -1;
+      }
+      break;
+    }
+    byte_written += byte_retby_filesys;
+    if (byte_retby_filesys != (off_t)actual_write)
+    {
+      break;
+    }
+    buff += byte_retby_filesys;
+    size -= byte_retby_filesys;
   }
-  /*release anyway before function end*/
-  lock_release(&lock_f);
-  /*return 0 if can't write*/
-  return 0;
+  return byte_written;
 }
 
 /*runs the executable whose name is given in cmd_line*/
@@ -506,40 +528,84 @@ int filesize(int fd)
 /*reads size bytes from the file open as fd into buffer*/
 int read(int fd, void *buffer, unsigned size)
 {
-  lock_acquire(&lock_f);
+  uint8_t *buff = buffer;
+  int byte_read = 0;
   struct list_elem *temp;
   struct thread *curr = thread_current();
-  /*fd == 0 , read from keyboard*/
-  if (fd == 0)
+  while (size > 0)
   {
-    lock_release(&lock_f);
-    /*see "devices/input.c" for detail*/
-    return (int)input_getc();
-  }
-  /*if read from STDOUT or no open file to read*/
-  if (fd == 1 || list_empty(&curr->file_des))
-  {
-    /*release the lock and return error*/
-    lock_release(&lock_f);
-    return 0; /*attention*/
-  }
-  temp = list_front(&curr->file_des);
-  /*search the file to fd list in current thread*/
-  while (temp != NULL)
-  {
-    struct file_to_fd *link = list_entry(temp, struct file_to_fd, f_list);
-    /*if find the fd file*/
-    if (link->f_des == fd)
+    size_t page_blank = PGSIZE - pg_ofs(buff);
+    size_t actual_read;
+    off_t byte_retby_filesys;
+    if (page_blank > size)
     {
-      /*release the lock and return the bytes written*/
-      lock_release(&lock_f);
-      return (int)file_read(link->f_addr_ptr, buffer, size);
+      actual_read = size;
     }
-    temp = temp->next;
+    else
+    {
+      actual_read = page_blank;
+    }
+    /*fd == 0 , read from keyboard*/
+    if (fd == 0)
+    {
+      size_t i = 0;
+      /*see "devices/input.c" for detail*/
+      for (; i < actual_read; i++)
+      {
+        char input_bytes = input_getc();
+        if (!page_lock(buff, true))
+        {
+          thread_exit();
+        }
+        buff[i] = input_bytes;
+        page_unlock(buff);
+      }
+      byte_read = actual_read;
+    }
+    /*if read from STDOUT or no open file to read*/
+    if (fd == 1 || list_empty(&curr->file_des))
+    {
+      return 0; /*attention*/
+    }
+    if (fd != 0 && fd != 1)
+    {
+      if (!page_lock(buff, true))
+      {
+        thread_exit();
+      }
+      lock_acquire(&lock_f);
+      temp = list_front(&curr->file_des);
+      /*search the file to fd list in current thread*/
+      while (temp != NULL)
+      {
+        struct file_to_fd *link = list_entry(temp, struct file_to_fd, f_list);
+        /*if find the fd file*/
+        if (link->f_des == fd)
+        {
+          byte_retby_filesys = file_read(link->f_addr_ptr, buffer, size);
+        }
+        temp = temp->next;
+      }
+      lock_release(&lock_f);
+      page_unlock(buff);
+    }
+    if (byte_retby_filesys < 0)
+    {
+      if (byte_read == 0)
+      {
+        byte_read = -1;
+      }
+      break;
+    }
+    byte_read += byte_retby_filesys;
+    if (byte_retby_filesys != (off_t)actual_read)
+    {
+      break;
+    }
+    buff += byte_retby_filesys;
+    size -= byte_retby_filesys;
   }
-  /*can't find fd file*/
-  lock_release(&lock_f);
-  return -1;
+  return byte_read;
 }
 
 /*changes the next byte to be read or written in open file 
