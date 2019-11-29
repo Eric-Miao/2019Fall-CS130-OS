@@ -25,6 +25,7 @@ void page_table_free(void);
 void page_eviction(void *addr);
 struct page *page_allocate (void *addr, bool writabel);
 struct page *page_search(const void *address);
+struct page *page_search_all(const void *address);
 bool page_in(struct page *p);
 bool page_out (struct page *p);
 bool page_accessed_recently(struct page *p);

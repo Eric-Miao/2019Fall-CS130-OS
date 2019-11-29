@@ -76,7 +76,6 @@ void page_table_free()
 /*search for page by given address*/
 struct page *page_search(const void *address)
 {
-    printf("\nin search\n");
     if (address < PHYS_BASE)
     {
         struct page p;
@@ -107,16 +106,31 @@ struct page *page_search(const void *address)
     return NULL;
 }
 
+struct page *page_search_all(const void *address)
+{
+        struct page p;
+        /*find the page base*/
+        p.addr = (void *)pg_round_down(address);
+        struct thread *curr = thread_current();
+        /*search for the page in current thread's page tabel*/
+        struct hash_elem *key = hash_find(curr->page_table, &p.pte);
+        if (key != NULL)
+        {
+            /*target page is in current thread's hash table, return it*/
+            struct page *target = hash_entry(key, struct page, pte);
+            return target;
+        }
+        return NULL;
+}
+
 /* lock the page to the frame and identify its write status */
 bool page_lock(const void *addr, bool write)
 {
     /*search for page by address given*/
     struct page *p = page_search(addr);
     /*if there is no such page return false*/
-    printf("\nin lock\n");
     if (p == NULL)
     {
-        printf("\nin NULL\n");
         return false;
     }
     /*if trying to write to a read only page then return false*/
