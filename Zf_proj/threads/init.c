@@ -130,7 +130,6 @@ main (void)
   frame_init ();
   swap_init ();
   printf ("Boot complete.\n");
-  //printf (frame_table_size());
   /* Run actions specified on kernel command line. */
   run_actions (argv);
 

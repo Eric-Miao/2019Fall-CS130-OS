@@ -151,19 +151,13 @@ page_fault(struct intr_frame *f)
    not_present = (f->error_code & PF_P) == 0;
    write = (f->error_code & PF_W) != 0;
    user = (f->error_code & PF_U) != 0;
-   /* Myx: Keep the old exceptions and reconstruct a new one.*/
-   /*printf("Page fault at %p: %s error %s page in %s context.\n",
-          fault_addr,
-          not_present ? "not present" : "rights violation",
-          write ? "writing" : "reading",
-          user ? "user" : "kernel"); */
+
    if ((not_present || (!not_present && write)) && !user)
       {
         thread_current()->exitcode = -1;
         thread_exit();
       }
-   /* Myx: Round down to the nearest virtual page base if needed. */
-   //fault_page = pg_round_down(fault_addr);
+
    if (user)
    {
       if (is_kernel_vaddr(fault_addr) ||
@@ -181,7 +175,6 @@ page_fault(struct intr_frame *f)
          /*if current thread has no page tabel*/
          if (curr->page_table == NULL)
          {
-            //printf("\npage table\n");
             thread_current()->exitcode = -1;
             thread_exit();
          }
@@ -189,7 +182,6 @@ page_fault(struct intr_frame *f)
          /*fault address is in no page*/
          if (p == NULL)
          {
-            //printf("\npage\n");
             thread_current()->exitcode = -1;
             thread_exit();
          }

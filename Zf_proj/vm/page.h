@@ -29,8 +29,6 @@ struct page *page_search_all(const void *address);
 bool page_in(struct page *p);
 bool page_out (struct page *p);
 bool page_accessed_recently(struct page *p);
-bool page_lock(const void *addr, bool write);
-void page_unlock(const void *addr);
 hash_hash_func page_number;
 hash_less_func page_less;
 #endif

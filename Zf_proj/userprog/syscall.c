@@ -85,7 +85,6 @@ syscall_handler(struct intr_frame *f UNUSED)
     /*terminate the program and free its resources */
     exit(-1);
   }
-  //printf("syscall is %d\n",*(int *)f->esp);
   /*if syscall is halt then call it*/
   if (*(int *)f->esp == SYS_HALT)
   {
@@ -110,15 +109,7 @@ syscall_handler(struct intr_frame *f UNUSED)
       /*terminate the program and free its resources */
       exit(-1);
     }
-    /*check if the address is mapped to the physical address*/
-    //physical_page = (void *)pagedir_get_page(curr->pagedir, (const void *)args[0]);
-    /*if not then terminate the program and free its resources*/
-    //if (physical_page == NULL)
-    //{
-    //  exit(-1);
-    //}
-    /*send physical page pointer back to args*/
-    //args[0] = (int)physical_page;
+
     /*store the return value of API function(exec() for now) in extended accumulator registor*/
     f->eax = exec((const char *)args[0]);
   }
@@ -163,15 +154,6 @@ syscall_handler(struct intr_frame *f UNUSED)
     /*get the name of file to be removed*/
     get_args(f, &args[0], 1);
     struct thread *curr = thread_current();
-    /*check if the address is mapped to the physical address*/
-    //physical_page = pagedir_get_page(curr->pagedir, (const void *)args[0]);
-    /*if not then terminate the program and free its resources*/
-    //if (physical_page == NULL)
-    //{
-    //  exit(-1);
-    //}
-    /*send physical page pointer back to args*/
-    //args[0] = (int)physical_page;
     /*store in exa*/
     f->eax = remove((const char *)args[0]);
   }
@@ -188,8 +170,6 @@ syscall_handler(struct intr_frame *f UNUSED)
     {
       exit(-1);
     }
-    /*send physical page pointer back to args*/
-    //args[0] = (int)physical_page;
     /*store in exa*/
     f->eax = open((const char *)args[0]);
   }
@@ -262,15 +242,6 @@ syscall_handler(struct intr_frame *f UNUSED)
       /*store to the arg array we created before*/
       args[i] = *temp;
     }
-    // if (!is_user_vaddr((const void *)args[0]) || (const void *)args[0] == NULL || (const void *)args[0] < (void *)0x08048000)
-    // {
-    //   exit(-1);
-    // }
-    // if (!is_user_vaddr((const void *)args[1]) || (const void *)args[1] < (void *)0x08048000)
-    // {
-    //   /*terminate the program and free its resources */
-    //   exit(-1);
-    // }
     /*call mmap()*/
     f->eax = mmap(args[0], (void *)args[1]);
   }
@@ -344,18 +315,15 @@ int write(int fd, const void *buffer, unsigned size)
   void *buff = buffer;
   while (buff != NULL)
   {
-    /*printf("\n in write\n");*/
     if (buff != NULL && is_user_vaddr(buff))
     {
       if (pagedir_get_page(thread_current()->pagedir, buff) == NULL)
       {
-        //printf("\none\n");
         exit(-1);
       }
     }
     else
     {
-      //printf("\ntwo\n");
       exit(-1);
     }
     
@@ -374,7 +342,6 @@ int write(int fd, const void *buffer, unsigned size)
       buff_size = 0;
     }
   }
-  //printf("\nin write\n");
   /*acquire the lock that ensure that only one process is writing on file system*/
   lock_acquire(&lock_f);
   /*if FD is i then write to console*/

@@ -14,7 +14,6 @@
 /*allocate a page and add it into page table*/
 struct page *page_allocate(void *addr, bool writable)
 {
-    //printf("\nin allocate\n");
     struct thread *curr = thread_current();
     /*malloc memory for new page*/
     struct page *new_page = malloc(sizeof *new_page);
@@ -122,51 +121,6 @@ struct page *page_search_all(const void *address)
             return target;
         }
         return NULL;
-}
-
-/* lock the page to the frame and identify its write status */
-bool page_lock(const void *addr, bool write)
-{
-    /*search for page by address given*/
-    struct page *p = page_search(addr);
-    /*if there is no such page return false*/
-    if (p == NULL)
-    {
-        return false;
-    }
-    /*if trying to write to a read only page then return false*/
-    if (p->writable && write)
-    {
-        return false;
-    }
-    frame_lock(p->frame);
-    /*if no frame is allocated to current page yet*/
-    if (p->frame == NULL)
-    {
-        struct thread *curr = thread_current();
-        /*allocate a frame to the page*/
-        bool success_alloc = page_in(p);
-        /*map the page to newly allocated frame */
-        bool success_map = pagedir_set_page(curr->pagedir, p->addr, p->frame->ker_base, !p->writable);
-        if (success_alloc && success_map)
-        {
-            return true;
-        }
-        return false;
-    }
-    /*successfully locked*/
-    else
-    {
-        return true;
-    }
-}
-
-/* unlock the page locked to frame */
-void page_unlock(const void *addr)
-{
-    struct page *p = page_search(addr);
-    ASSERT(p != NULL);
-    frame_unlock(p->frame);
 }
 
 /* if page has been accessed recently return true */

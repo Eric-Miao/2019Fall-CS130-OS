@@ -87,7 +87,6 @@ frame_evict(struct page *p)
     struct list_elem *e;
     struct list *l = &frame_table;
     clock_loop = 1;
-    //printf("\nin frame eviction\n");
     for (e = list_begin(l); (e != list_end(l) || clock_loop < 3); e = list_next(e))
     {
         /* When reach the tail, start from the head again and loop ++. */
