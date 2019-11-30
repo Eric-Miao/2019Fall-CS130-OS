@@ -13,7 +13,6 @@ static long long page_fault_cnt;
 
 static void kill(struct intr_frame *);
 static void page_fault(struct intr_frame *);
-
 /* Myx: For easy use, define the bottom of user stack. */
 #define STACK_BOTTOM 0x08048000
 
@@ -163,8 +162,8 @@ page_fault(struct intr_frame *f)
       if (is_kernel_vaddr(fault_addr) ||
           (fault_addr < STACK_BOTTOM && is_user_vaddr(fault_addr)))
       {
-        thread_current()->exitcode = -1;
-        thread_exit();
+         thread_current()->exitcode = -1;
+         thread_exit();
       }
 
       if (not_present)
@@ -205,6 +204,7 @@ page_fault(struct intr_frame *f)
          if (!success)
          {
             /*terminate the process if set faild*/
+            frame_unlock(p->frame);
             thread_current()->exitcode = -1;
             thread_exit();
          }
