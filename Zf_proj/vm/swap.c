@@ -59,13 +59,16 @@ swap_page_outto_disk(struct page *p)
         return false;
     
     /* Find a sector on disk to write. */
+    lock_acquire(&swap_lock);
     write_pos = bitmap_scan(swap_bitmap, 0, 1, false);
     if (write_pos == BITMAP_ERROR)
     {
         printf("bitmap full to write.\n");
+        lock_release(&swap_lock);
         return false;
     }
     bitmap_flip(swap_bitmap, write_pos);
+    lock_release(&swap_lock);
     base_to_wrtie = write_pos * SECTOR_PER_PAGE;
     base_to_read = p->frame->ker_base;
 
@@ -80,7 +83,7 @@ swap_page_outto_disk(struct page *p)
     /* Reset the page/frame's property */
     p->swap_sector = base_to_wrtie;
     p->file = NULL;
-    
+    p->swapable = false;
     /* Not sure the usage of the following properties, check later. */
     p->offset = 0;
     p->bytes = 0;
