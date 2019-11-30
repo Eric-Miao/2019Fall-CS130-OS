@@ -30,24 +30,81 @@ FirstName LastName <email@domain.example>
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+------------------ page.h ------------------
+struct page 
+  {
+    void *addr;                       /* user virtual address. */
+    bool writable;                    /* read only or read and write */
+    bool swapable;                    /* true to write to swap. */
+    struct thread *onwer;             /* thread using that page */
+    struct frame *frame;              /* the frame related to this page */
+    struct hash_elem pte;             /* to store in table */
+    struct file *file;                /* file in page */
+    block_sector_t swap_sector;       /* sector of swap area, -1 if no swap area */
+    off_t offset;                     /* address offset of file in page*/
+    off_t bytes;                      /* read (write) bytes */
+  };
+
+------------------ page.c ------------------
+struct thread (Added)
+  {  
+    struct hash *page_table;      /* supplemental page table */
+  }
+
 ---- ALGORITHMS ----
 
 >> A2: In a few paragraphs, describe your code for accessing the data
 >> stored in the SPT about a given page.
 
+Given a page, assuming it's the virtual address we want to access, we will first use 
+this given address to go throught the SPT to find the page it belongs to. Given this 
+found page, it should contain the struct we design.Thus, we can directly access the 
+physical memory, aka frame by the pointer 'frame'. 
+
+If the frame is allocated previouly for this page, then the pointer shall not be null and 
+can be accessed directly. Otherwise, this pointer should be null and will enter page_fault
+because this is an access to a unknown address.
+
+In page_fault, we will go through a set of conditions to deside if this page or address is 
+suitable for allocating a physical frame to it, returning the frame allocated if true.
+
 >> A3: How does your code coordinate accessed and dirty bits between
 >> kernel and user virtual addresses that alias a single frame, or
 >> alternatively how do you avoid the issue?
+
+We think this problem is should be accessed by calling the pagedir function 'pagedir_set()',
+which build a map between the user page and the kernel page, thus pagedir_set_dirty and
+pagedir_set_accessed shalled be operated on both pages.
+
+At the same time, we only accessing user data from user address, thus has nothing to do with
+the kernrl address it mapps to.
+
 
 ---- SYNCHRONIZATION ----
 
 >> A4: When two user processes both need a new frame at the same time,
 >> how are races avoided?
 
+We designed a lock for frame table, this lock should be accessed when ever our frame_allocate 
+function is called, and thus only one process can access the frame table management system once.
+
 ---- RATIONALE ----
 
 >> A5: Why did you choose the data structure(s) that you did for
 >> representing virtual-to-physical mappings?
+
+Previously, it uses the pagedir to establish and maintain the virtual-to-physical mappings.
+We use a frame pointer to directly point to the physical frame. This pointer makes things easier 
+and faster when we want to access a virtual address.
+
+With this pointer we can directly access the frame when a locate the page the address belongs to.
+Without this pointer we should use pagedir_get_page (), which firstly find the mapping calculation 
+relationship between virtual and physical address then do the translation, which is really slow.
+
+The pagedir can be used partially in our lazily load, swap and mmap purpose, since we just do the 
+mapping one and a time instead of mapping them all at the first. However, this will not achieve the 
+needs like evict or re-allocate the virtual-physical mapping. Thus we implemented the SPT.
+
 
 		       PAGING TO AND FROM DISK
 		       =======================
@@ -58,18 +115,74 @@ FirstName LastName <email@domain.example>
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+-------------- frame.h --------------------
+struct frame
+{
+    struct lock frame_lock;     /* The lock ensures critical section. */
+    void* ker_base;             /* Kernel virtual page. */
+    struct page *page;          /* The page this frame assigned to. */
+    struct list_elem fte        /* Frame table entry. */
+};
+
+-------------- frame.c --------------------
+  /* Use list to implement frame table, nodes as entries. */
+  static struct list frame_table;
+
+  /* Lock for accessing the frame table */
+  static struct lock frame_table_lock;
+
+  /* The loop indicator for eviction clock. */
+  static size_t clock_loop;
+
+-------------- swap.c --------------------
+  /* The swap block on disk. */
+  struct  block *swap;
+
+  /* The lock for swap. */
+  struct lock swap_lock;
+
+  /* The bitmap used to manage the swap. */
+  struct bitmap *swap_bitmap;
+
+
 ---- ALGORITHMS ----
 
 >> B2: When a frame is required but none is free, some frame must be
 >> evicted.  Describe your code for choosing a frame to evict.
 
+Firstly, we use a list to maintain the frame table, thus the entry is the 
+node in the list. Further, we allocate all the physical frame available into
+our frame table at the frame_init() function. Whichever frame node in the 
+list has a virtual-physical mapping, we set the page pointer in the struct 
+frame into the page in the mapping, and null otherwise.
+
+When we want to find a frame to evict, we use the second chance/clock page 
+replacement policy.
+Totoally we travel the list twice due to the policy. During the process,
+as soon as we meet a frame with a null pointer of page, we return this frame.
+Otherwise we check if this frame is accessed recently, if so, we set the page
+mapped with the frame to not recently accessed and go on to next frame.
+If no one condition above mathes, it indicates a frame which has a mapped and 
+page and is not recently accessed (whether it's set in the previous loop or not),
+and this is the frame mapped page we want to evict.
+
 >> B3: When a process P obtains a frame that was previously used by a
 >> process Q, how do you adjust the page table (and any other data
 >> structures) to reflect the frame Q no longer has?
 
+When Q no longer use a frame, we will automatically 'free this frame',
+which set the page pointer in the frame pointer to null, indicating no one 
+holds this frame any longer.
+
 >> B4: Explain your heuristic for deciding whether a page fault for an
 >> invalid virtual address should cause the stack to be extended into
 >> the page that faulted.
+
+We first verify if the address is a virtual address. 
+We then judge if the address which need to be extened to is in a 32 bytes
+bytes range from current uesp which is self-defined property. 
+We also judge if the address if the address is above the lowest bottom of
+user stack.
 
 ---- SYNCHRONIZATION ----
 
@@ -77,6 +190,18 @@ FirstName LastName <email@domain.example>
 >> particular, explain how it prevents deadlock.  (Refer to the
 >> textbook for an explanation of the necessary conditions for
 >> deadlock.)
+We have several locks and no semas or conditional variables in our VM system.
+we have a lock for frame table, a lock for swap_bitmap and locks for every frame
+struct in our frame table.
+
+First of all, every time a process wants to access a frame, it needs fisrt acquire
+locks of frame table and the frame it wants to modify. 
+We don't actually allow a looply acquire of lock, that is acquiring a lock
+during the critical section except for the frame table lock and the frame lock of 
+each frame. However, this process is not a typical looply lock acquire because one 
+process can only acquire the lock for the frame after it acquires the lock for the 
+frame table which only has one in the whole system.
+Thus we think we are capable of avoiding dead lock.
 
 >> B6: A page fault in process P can cause another process Q's frame
 >> to be evicted.  How do you ensure that Q cannot access or modify
