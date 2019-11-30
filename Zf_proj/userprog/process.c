@@ -77,13 +77,8 @@ tid_t process_execute(const char *file_name)
   strtok_r(name, " ", &save_ptr);
   /* Create a new thread to execute FILE_NAME. */
   tid = thread_create(name, PRI_DEFAULT, start_process, &execute);
-  /* Myx: I see u have done this free in start_process. */
-  /*   if (tid == TID_ERROR)
-  {
-    palloc_free_page(fn_copy);
-  } */
-  /*let current thread wait for child thread to finish loading*/
 
+  /*let current thread wait for child thread to finish loading*/
   if (tid != TID_ERROR)
   {
     sema_down(&execute.waiting_exec);
@@ -204,22 +199,6 @@ int process_wait(tid_t child_tid UNUSED)
     }
     temp = list_next(temp);
   }
-  /*if it's not a child of the calling process*/
-  /*if (last == NULL || temp_1 == NULL)
-  {
-    return -1;
-  }*/
-  /*let parent know which child it is waiting for*/
-  /*curr->is_waiting = last->tid;*/
-  /*if the child is not terminated*/
-  /*if (last->running == 0)
-  {*/
-    /*put the current thread to wait(sleep)*/
-    /*sema_down(&curr->waiting_parent);
-  }*/
-  /*remove given thread from children list to avoid calling repeatedly*/
-  /*int ret = last->code;
-  list_remove(temp_1);*/
   return -1;
 }
 
@@ -233,6 +212,7 @@ void process_exit(void)
   /*Process Termination Messages*/
   printf("%s: exit(%d)\n", cur->name, cur->exitcode);
 
+  /* Find the waiting parent and wake it up. */
   if (cur->son_info != NULL) 
     {
       struct last_words *child_infom = cur->son_info;
@@ -248,6 +228,7 @@ void process_exit(void)
       }
     }
 
+  /* Clean the son_info when parent exit, aka free all the structs. */
   temp = list_begin (&cur->children);
   while(temp != list_end (&cur->children))
     {
@@ -291,7 +272,6 @@ void process_exit(void)
 
   /* Free the supplementary PT current process owns. */
   timer_msleep(1000);
-
   page_table_free();
 
 
@@ -587,6 +567,7 @@ validate_segment(const struct Elf32_Phdr *phdr, struct file *file)
   return true;
 }
 
+/* To implement the lazy-load load segment function. */
 static bool
 load_segment_lazily(struct file *file, off_t ofs, uint8_t *upage,
                     uint32_t read_bytes, uint32_t zero_bytes, bool writable)
@@ -614,7 +595,8 @@ load_segment_lazily(struct file *file, off_t ofs, uint8_t *upage,
       p->offset = ofs;
       p->bytes = page_read_bytes;
     }
-    /* Advance. */
+
+    /* property maintaining. */
     read_bytes -= page_read_bytes;
     zero_bytes -= page_zero_bytes;
     ofs += page_read_bytes;

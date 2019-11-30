@@ -286,7 +286,6 @@ void unmap(struct map *m)
     }
   }
   int j = 0;
-  /**/
   for (; j < m->page_count; j++)
   {
     page_eviction((void *)((m->index) + (PGSIZE * j)));

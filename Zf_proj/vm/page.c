@@ -47,7 +47,7 @@ struct page *page_allocate(void *addr, bool writable)
     return new_page;
 }
 
-/*free a page*/
+/*free a page and release the frame lock.*/
 static void page_free(struct hash_elem *elem, void *aux UNUSED)
 {
     struct page *p = hash_entry(elem, struct page, pte);
@@ -106,6 +106,7 @@ struct page *page_search(const void *address)
     return NULL;
 }
 
+/* Search all page including kernel. */
 struct page *page_search_all(const void *address)
 {
         struct page p;

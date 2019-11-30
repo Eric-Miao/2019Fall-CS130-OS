@@ -17,7 +17,6 @@ static struct lock frame_table_lock;
 /* The loop indicator for eviction clock. */
 static size_t clock_loop;
 
-int cnt;
 /* Initialize the whole frame system. */
 void *
 frame_init()
@@ -38,12 +37,14 @@ frame_init()
     ASSERT(!list_empty(&frame_table));
 }
 
+/* Return the size of the frame table, aka number of physical frames. */
 size_t
 frame_table_size()
 {
   return list_size(&frame_table);
 }
 
+/* Free the frame lock of given frame f */
 bool 
 frame_free(struct frame *f)
 {
@@ -53,6 +54,7 @@ frame_free(struct frame *f)
     frame_unlock(f);
 }
 
+/* Acquire the frame lock of given frame f */
 bool 
 frame_lock(struct frame *f)
 {
@@ -67,6 +69,7 @@ frame_lock(struct frame *f)
     }
 }
 
+/* This is actually the unlock function, which frame_free called. */
 bool 
 frame_unlock(struct frame *f)
 {

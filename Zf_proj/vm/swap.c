@@ -21,6 +21,7 @@ struct bitmap *swap_bitmap;
 /* The sector number per page, calculated by the division. */
 #define SECTOR_PER_PAGE (PGSIZE / BLOCK_SECTOR_SIZE)
 
+/* Init the swap system by calling the function. */
 void
 swap_init()
 {
@@ -65,6 +66,7 @@ swap_page_outto_disk(struct page *p)
         printf("bitmap full to write.\n");
         return false;
     }
+    /* Filp the map returned by scanning. */
     bitmap_flip(swap_bitmap, write_pos);
         
     base_to_wrtie = write_pos * SECTOR_PER_PAGE;
@@ -88,6 +90,8 @@ swap_page_outto_disk(struct page *p)
     return true;
 }
 
+/* Swap the stroed info of given page p 
+  in swap into given page p. */
 bool 
 swap_disk_into_page(struct page *p)
 {
@@ -113,6 +117,7 @@ swap_disk_into_page(struct page *p)
     
     return true;
 }
+
 /*  The read indicate if this is a read swap into page, false otherwise.
     If a process wants to read/write a page into swap,
     1. The page shall have a physical frame in map.
