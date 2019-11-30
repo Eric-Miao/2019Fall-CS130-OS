@@ -58,7 +58,6 @@ try_frame_alloc_and_lock (struct page *page)
         } 
       lock_release (&f->lock);
     }
-
   /* No free frame.  Find a frame to evict. */
   for (i = 0; i < frame_cnt * 2; i++) 
     {

@@ -87,7 +87,7 @@ frame_evict(struct page *p)
     struct list_elem *e;
     struct list *l = &frame_table;
     clock_loop = 1;
-
+    //printf("\nin frame eviction\n");
     for (e = list_begin(l); (e != list_end(l) || clock_loop < 3); e = list_next(e))
     {
         /* When reach the tail, start from the head again and loop ++. */
@@ -96,7 +96,6 @@ frame_evict(struct page *p)
             clock_loop ++;
             e = list_begin(l);
         }
-
         struct frame *f = list_entry(e, struct frame, fte);
         if (!lock_try_acquire(&f->frame_lock))
             continue;
@@ -111,7 +110,7 @@ frame_evict(struct page *p)
 
         /*  If the page has recently accessed, clean the access bit and continue. 
             IMPORTANT: CLEAR THE ACCESS BIT IN PAGE P AFTER I CHECK.*/
-        if (page_accessed_recently(p))
+        if (page_accessed_recently(f->page))
         {
             lock_release(&f->frame_lock);
             continue;
@@ -119,9 +118,9 @@ frame_evict(struct page *p)
         /* If the page is not NULL | not recently accessed  
             try to evivt it and return the frame if success.
             Otherwise return NULL */
-        if (page_out(p))
+        lock_release(&frame_table_lock);
+        if (page_out(f->page))
         {
-            lock_release(&frame_table_lock);
             /* The page is mine now, no need to release the lock. */
             f->page = p;
             return f;
@@ -129,7 +128,6 @@ frame_evict(struct page *p)
         /* page out fail */
         else
         {
-            lock_release(&frame_table_lock);
             lock_release(&f->frame_lock);
             return NULL;
         }
@@ -148,7 +146,6 @@ struct frame*
 frame_allocate(struct page *p)
 {
     lock_acquire(&frame_table_lock);
-    
     struct list_elem *e;
     struct list *l = &frame_table;
     for (e = list_front(l); e != list_end(l); e = list_next(e))

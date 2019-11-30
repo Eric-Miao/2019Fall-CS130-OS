@@ -13,7 +13,6 @@ static long long page_fault_cnt;
 
 static void kill(struct intr_frame *);
 static void page_fault(struct intr_frame *);
-
 /* Myx: For easy use, define the bottom of user stack. */
 #define STACK_BOTTOM 0x08048000
 
@@ -152,16 +151,16 @@ page_fault(struct intr_frame *f)
    write = (f->error_code & PF_W) != 0;
    user = (f->error_code & PF_U) != 0;
    /* Myx: Keep the old exceptions and reconstruct a new one.*/
-   /*printf("Page fault at %p: %s error %s page in %s context.\n",
-          fault_addr,
-          not_present ? "not present" : "rights violation",
-          write ? "writing" : "reading",
-          user ? "user" : "kernel"); */
    if ((not_present || (!not_present && write)) && !user)
-      {
-        thread_current()->exitcode = -1;
-        thread_exit();
-      }
+   {
+      /*printf("Page fault at %p: %s error %s page in %s context.\n",
+             fault_addr,
+             not_present ? "not present" : "rights violation",
+             write ? "writing" : "reading",
+             user ? "user" : "kernel");*/
+      thread_current()->exitcode = -1;
+      thread_exit();
+   }
    /* Myx: Round down to the nearest virtual page base if needed. */
    //fault_page = pg_round_down(fault_addr);
    if (user)
@@ -169,8 +168,8 @@ page_fault(struct intr_frame *f)
       if (is_kernel_vaddr(fault_addr) ||
           (fault_addr < STACK_BOTTOM && is_user_vaddr(fault_addr)))
       {
-        thread_current()->exitcode = -1;
-        thread_exit();
+         thread_current()->exitcode = -1;
+         thread_exit();
       }
 
       if (not_present)
@@ -213,6 +212,7 @@ page_fault(struct intr_frame *f)
          if (!success)
          {
             /*terminate the process if set faild*/
+            frame_unlock(p->frame);
             thread_current()->exitcode = -1;
             thread_exit();
          }

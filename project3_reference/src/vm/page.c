@@ -12,7 +12,6 @@
 /* Maximum size of process stack, in bytes. */
 /* Right now it is 1 megabyte. */
 #define STACK_MAX (1024 * 1024)
-
 /* Destroys a page, which must be in the current process's
    page table.  Used as a callback for hash_destroy(). */
 static void
@@ -110,7 +109,6 @@ page_in (void *fault_addr)
 {
   struct page *p;
   bool success;
-
   /* Can't handle page faults without a hash table. */
   if (thread_current ()->pages == NULL)
     return false;
