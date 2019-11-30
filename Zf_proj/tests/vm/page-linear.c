@@ -18,7 +18,6 @@ test_main (void)
 
   /* Initialize to 0x5a. */
   msg ("initialize");
-  printf("ready to memset\n\n\n\n");
   memset (buf, 0x5a, sizeof buf);
 
   /* Check that it's all 0x5a. */
