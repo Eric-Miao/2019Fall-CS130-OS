@@ -1,6 +1,6 @@
-        +---------------------------+
-		    | CS 140                    |
-		    | PROJECT 3: VIRTUAL MEMORY	|
+﻿        	+---------------------------+
+		    | CS 140                     |
+		    | PROJECT 3: VIRTUAL MEMORY	  |
 		    |	DESIGN DOCUMENT           |
 		    +---------------------------+
 
@@ -8,9 +8,8 @@
 
 >> Fill in the names and email addresses of your group members.
 
-FirstName LastName <email@domain.example>
-FirstName LastName <email@domain.example>
-FirstName LastName <email@domain.example>
+Yuxin Miao <miaoyx@shanghaitech.edu.cn>
+Fan Zhang <zhangfan5@shangahaitech.edu.cn>
 
 ---- PRELIMINARIES ----
 
