@@ -22,7 +22,6 @@ pagedir_create (void)
   return pd;
 }
 
-
 /* Destroys page directory PD, freeing all the pages it
    references. */
 void
