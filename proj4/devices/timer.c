@@ -90,23 +90,23 @@ void timer_sleep(int64_t ticks)
 
   ASSERT(intr_get_level() == INTR_ON);
   /*The old method*/
-  /*if (ticks < 0 || ticks == 0)
+  if (ticks < 0 || ticks == 0)
   {
     return;
-  }*/
-  while (timer_elapsed (start) < ticks) 
-    thread_yield ();
+  }
+  /*while (timer_elapsed (start) < ticks) 
+    thread_yield ();*/
   /*Get the thread that is going to sleep*/
-  /*struct thread *current = thread_current();*/
+  struct thread *current = thread_current();
   /*Set sleeping time to the guard*/
-  /*current->guard = ticks;*/
+  current->guard = ticks;
   /*Save the current interrupt state before getting into a lock
     And disable the interrupt*/
-  /*enum intr_level old_level = intr_disable();*/
+  enum intr_level old_level = intr_disable();
   /*Block the thread so that it won't wasting CPU time(sleep)*/
-  /*thread_block();*/
+  thread_block();
   /*renable the interrupt*/
-  /*intr_set_level(old_level);*/
+  intr_set_level(old_level);
 }
 
 /* Sleeps for approximately MS milliseconds.  Interrupts must be
@@ -178,11 +178,11 @@ timer_interrupt(struct intr_frame *args UNUSED)
 {
   ticks++;
   /*disable interrupt*/
-  /*enum intr_level old_level = intr_disable();*/
+  enum intr_level old_level = intr_disable();
   /*for each thread check if there is any thread need to be waken up*/
-  /*thread_foreach(thread_wake_up, 0);*/
+  thread_foreach(thread_wake_up, 0);
   /*enable the interrupt*/
-  /*intr_set_level(old_level);*/
+  intr_set_level(old_level);
   thread_tick();
   /*if (thread_mlfqs)
   {

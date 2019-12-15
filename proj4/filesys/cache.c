@@ -1,0 +1,9 @@
+#include <string.h>
+#include <stdbool.h>
+#include <debug.h>
+#include "threads/synch.h"
+#include "threads/thread.h"
+#include "threads/malloc.h"
+#include "devices/timer.h"
+#include "filesys/filesys.h"
+#include "filesys/cache.h"
