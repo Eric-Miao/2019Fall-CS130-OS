@@ -1,0 +1,376 @@
+		     +--------------------------+
+       	       	     |		CS 140		|
+		     | PROJECT 2: USER PROGRAMS	|
+		     | 	   DESIGN DOCUMENT     	|
+		     +--------------------------+
+
+---- GROUP ----
+
+>> Fill in the names and email addresses of your group members.
+
+Jingtao Xu <jingtaox@stanford.edu>
+Chenjie Yang <yangcj@stanford.edu>
+
+---- PRELIMINARIES ----
+
+>> If you have any preliminary comments on your submission, notes for the
+>> TAs, or extra credit, please give them here.
+
+>> Please cite any offline or online sources you consulted while
+>> preparing your submission, other than the Pintos documentation, course
+>> text, lecture notes, and course staff.
+
+			   ARGUMENT PASSING
+			   ================
+
+---- DATA STRUCTURES ----
+
+>> A1: Copy here the declaration of each new or changed `struct' or
+>> `struct' member, global or static variable, `typedef', or
+>> enumeration.  Identify the purpose of each in 25 words or less.
+
+/*message that includes process information which are needed 
+  for creating process and passing arguments */
+struct exec_msg
+{ 
+  char *fn_copy; /*copy of file name */
+  char *prog_name; /* extracted program name */
+  struct semaphore load_sema; 
+  /*semaphore to indicate that process has finished loading */
+  bool load_complete;
+};
+
+
+---- ALGORITHMS ----
+
+>> A2: Briefly describe how you implemented argument parsing.  How do
+>> you arrange for the elements of argv[] to be in the right order?
+>> How do you avoid overflowing the stack page?
+
+In process_execute(), we extract the file name and store the file
+name and the original argument string in struct exec_msg and pass
+it to start_process() and load(). load() passes the argument string
+to setup_stack(). In setup_stack(), first we compute argc and  
+push all the argument to the stack using push_to_stack(). At the 
+same time, we store the corresponding esp in argv. Then we 
+align to 4 bytes bying pushing char to the stack. Next we push
+argv[i] to the stack in reverse order. Finally, we push argv, argc
+and the fake return address to the stack.
+
+We only copy PAGESIZE of arguments to fn_copy, and pass fn_copy to
+other functions. Thus, it's not possible to overflow the stack page.
+
+
+---- RATIONALE ----
+
+>> A3: Why does Pintos implement strtok_r() but not strtok()?
+strtok_r() is a reentrant version of strtok(), so it ensures calling
+the function is thread-safe. strtok_r() makes sure that important
+pointers are not shared between different thread. Thus, even if a 
+thread calling strtok_r() is preempted, it can reenter the funtion
+and continue to do the work without being influenced.
+
+>> A4: In Pintos, the kernel separates commands into a executable name
+>> and arguments.  In Unix-like systems, the shell does this
+>> separation.  Identify at least two advantages of the Unix approach.
+
+Unix approach is much safer because insteading of passing arguments
+directly to the kernel, shell examines the arguments first and 
+ensures the arguments are legal.
+
+In Unix-like systems, because the shell separates commands into 
+executrable files, arguments and flags, complicated functionalities
+such as I/O redirection and background job are possible. In pintos,
+it is very difficult to do this.
+
+
+			     SYSTEM CALLS
+			     ============
+
+---- DATA STRUCTURES ----
+
+>> B1: Copy here the declaration of each new or changed `struct' or
+>> `struct' member, global or static variable, `typedef', or
+>> enumeration.  Identify the purpose of each in 25 words or less.
+
+/* Process identifier. */
+typedef int pid_t;
+
+struct lock file_lock;
+/* lock for the whole file system */
+
+/* struct used for keeping track of process information
+   in a thread */
+struct process_info {
+  tid_t tid;
+  struct list_elem elem;  
+  /* list elem for parent's children list */
+  int exit_status;
+  struct thread *parent;
+  struct semaphore exit_sema;
+  /* semaphore that tells the parent that the process is done */
+  struct lock wait_l;
+  /* used when a process is waiting for its child*/
+  bool waited;/* indicate whether the process is waited by its parent */
+};
+
+/* struct used for managing files that a process has */
+struct process_file{
+  struct file *file;
+  int fd; /*file descriptor */
+  struct list_elem elem; /* list_elem for file_list of a thread */
+};
+
+Added in struct thread:
+
+struct thread
+  {
+    int exit_status;  
+    struct list file_list;              
+    /*list of files that the thread has */
+    struct list children_list;          
+    /* list of children threads */
+    struct process_info *process;
+    struct file *exec_file;             /*executable file */
+    int fd;
+  };
+
+>> B2: Describe how file descriptors are associated with open files.
+>> Are file descriptors unique within the entire OS or just within a
+>> single process?
+File descriptors are unique within a single process. They don't need
+to be unique within the entire OS because each process has a unique 
+file list, and locating a specific file using fd and file_list is 
+sufficient. When a process opens a file, the file is added to the
+process's file_list and assign a fd. The process's fd count is
+incremented by one whenever a file is opened. 
+
+---- ALGORITHMS ----
+
+>> B3: Describe your code for reading and writing user data from the
+>> kernel.
+
+We read and write data using 'get_user' function and 'put_user' function 
+described in the assignment.  'get_user' function first set eax to the 
+return address(eip) and try to read a byte from the address the user gives. 
+If the read access successes, the result read will be stored in eax and 
+return correctly. If the read access fails, a page fault occurs. In the 
+page fault handler, eax will be set to -1(0xFFFFFFFF) and return. Hence, 
+'get_user' will finally return -1 to let kernel know there's an illegal 
+access. Kernel then can handle it properly(here we kill this user program 
+by exit(-1)). Writing data is similar based on 'put_user' function.
+
+Additionally, we must check whether the pointer is in user address space
+before calling 'get_user'/'put_user', which means the pointer must be under
+PHYS_BASE and above bottom 0x08048000.
+
+If the user program want to access a range of data, we must ensure that 
+the whole range of data is legal. A simple implementation will be that 
+we try to check every byte iteratively to see whether it's on an allocated 
+page. But this simple implementation is not efficient. Notice that if we can 
+read/write the first byte in a page, then we can read/write the whole page. 
+Based on this notice, we can implement the check process in a more 
+efficient way: We round down the first and last byte of the data to get all 
+the pages, then iteratively check the first byte of these pages(except the 
+first page, we check the first page by checking the first byte of the data). 
+This way clearly is much more efficient than the simple naive one, so we
+use this method in our code.
+
+>> B4: Suppose a system call causes a full page (4,096 bytes) of data
+>> to be copied from user space into the kernel.  What is the least
+>> and the greatest possible number of inspections of the page table
+>> (e.g. calls to pagedir_get_page()) that might result?  What about
+>> for a system call that only copies 2 bytes of data?  Is there room
+>> for improvement in these numbers, and how much?
+
+In a simple implementation, we must check every byte in the page, so the
+greatest number of inspections will be 4096. However, notice that we only
+need to check the first byte of the page to see whether it has been 
+allocated. So it the 4096 bytes span 2 pages, then the least number will
+be 1. If the 4096 bytes form a full single page, then the least number
+will be 2. For the situation that a system call only copies 2 bytes of 
+data, in a simple implementation, the number of inspections will be 2.
+For the improved implementation, if the 2 bytes span 2 pages, the number
+of inspections will also be 2. If the 2 bytes are in the same page, the
+number will be 1.
+
+>> B5: Briefly describe your implementation of the "wait" system call
+>> and how it interacts with process termination.
+First the process_wait() function checks whether it has a child with 
+the provided tid by iterating through its child list. It returns -1 if the tid
+is not one of its children’s. Then it fetches the specific child process from
+the child list and checks if it’s already being waited. Next, it calls sema_down
+and waits for its child to give a sema_up signal which indicates child has
+exited. After its child has exited, it gets the exit_status, remove the child
+from its child list and return the exit_status.
+In process_exit(), the process calls sema_up to tell its parents that it is 
+exiting. If it doesn’t have a parent, it frees its struct process_info.
+Otherwise, its parent will free the struct for it. Before exiting, it
+stores the exit_status in the struct process_info, and also sets the 
+parent of its children to be null.
+
+>> B6: Any access to user program memory at a user-specified address
+>> can fail due to a bad pointer value.  Such accesses must cause the
+>> process to be terminated.  System calls are fraught with such
+>> accesses, e.g. a "write" system call requires reading the system
+>> call number from the user stack, then each of the call's three
+>> arguments, then an arbitrary amount of user memory, and any of
+>> these can fail at any point.  This poses a design and
+>> error-handling problem: how do you best avoid obscuring the primary
+>> function of code in a morass of error-handling?  Furthermore, when
+>> an error is detected, how do you ensure that all temporarily
+>> allocated resources (locks, buffers, etc.) are freed?  In a few
+>> paragraphs, describe the strategy or strategies you adopted for
+>> managing these issues.  Give an example.
+
+System calls will be fraught with illegal accesses. There are mainly 
+three situations an illegal access may occur in system call handler:
+
+1. the pointer of stack may be illegal. To solve this problem, every 
+time we want to get data from the stack, we must first check the 
+pointer first. (NOTICE: the method we check data access is described 
+in detail in question B3, so we won't describe here once more.). For
+example, if 'create (const char *file, unsigned initial_size)' is
+to be called, we first check the esp pointer. Then we want to get
+'const char *file' and 'unsigned initial_size' from the stack, which
+means we will use pointer (esp+4) and (esp+8). Before using them 
+we'll check (esp+4) and (esp+8) to ensure it is legal.
+
+2. the argument pointer may be illegal. Also take 'create (const char 
+*file, unsigned initial_size)' function for example. If the user
+program pass an illegal pointer as an argument(like the pointer 'file' 
+is NULL). We must be able to handle it. So we check all the pointer
+type argument first before actually entering the function. 
+
+3. the argument pointer is legal, but all of the buffer data it points
+to may be illegal. Take 'read (int fd, void *buffer, unsigned length)'
+function for example. We must ensure that the whole 'length' of data
+the pointer 'buffer' points to is legal. So we check them before 
+entering the function, using the improved method we described in 
+question B4(check first byte in every page to ensure it has been 
+allocated). A little bit special case is that when the type of argument 
+is 'const char *', we can't use the improved method described before.
+This is because we don't know the actual length of the string 
+the pointer points to. So we must check every byte iteratively until
+we meet '\0'.
+
+Illegal access will cause page fault. We modify the page fault handler
+to fit the method we use. If the data is accessed by user(user == 1), 
+then we kill the user program. If the data is accessed by kernel, we 
+set eip to eax(eax is set to return address before), then set eax to -1 
+and return. Function 'get_user'/'put_user' will return -1 after this, and 
+the current thread will exit(-1) finally.
+
+We free all the resources(locks, buffers, etc) in exit(). exit() will 
+call thread_exit() so resources of thread will be freed, and thread_exit()
+will call process_exit() so resources of the process will also be freed. 
+Since all the illegal accesses will result in exit(-1), so we can ensure 
+that there's no memory leakage even when the thread exits due to errors. 
+
+---- SYNCHRONIZATION ----
+
+>> B7: The "exec" system call returns -1 if loading the new executable
+>> fails, so it cannot return before the new executable has completed
+>> loading.  How does your code ensure this?  How is the load
+>> success/failure status passed back to the thread that calls "exec"?
+
+Semaphore is used in exec to ensure synchronization. The thread which 
+calls exec will wait for sema_down() after calling load() function. And at 
+the end of the load function, the new executable will sema_up() (whether 
+load() successes or not it’ll call sema_up(), as can be seen in the code).
+The status is passed back to the thread through a flag ‘load_success’ in
+exec_msg struct. The new executable will set this flag at the end of the 
+load() function. If load_success == true, then the tid that thread_create() 
+returns is valid. And if load_success == false, then the process_execute()
+will set the return tid to TID_ERROR. if exec() system call sees that the 
+return of process_execute() is TID_ERROR, it will return -1 to indicate
+load failure. Otherwise, load successes and exec() will return the valid tid.  
+
+>> B8: Consider parent process P with child process C.  How do you
+>> ensure proper synchronization and avoid race conditions when P
+>> calls wait(C) before C exits?  After C exits?  How do you ensure
+>> that all resources are freed in each case?  How about when P
+>> terminates without waiting, before C exits?  After C exits?  Are
+>> there any special cases?
+
+For synchronization, P calling wait(C) before C exits is basically the 
+same as calling wait(C) after C exits. The only difference is that in
+the former case, P has to wait for C to call sema_up(). We use a 
+lock to ensure  synchronization whenever P tries to access C’s struct. 
+
+P terminates with waiting:
+P will always free its child’s struct in process_wait().
+
+P terminates without waiting before C exits:
+C will free its struct if it doesn’t have a parent.
+
+P terminates without waiting after C exits:
+P will free all of its dead children’s struct when exiting in process_exit().
+
+
+---- RATIONALE ----
+
+>> B9: Why did you choose to implement access to user memory from the
+>> kernel in the way that you did?
+
+‘get_user’/’put_user’ trick can take the advantage of MMU, so it is more 
+efficient. And the framework of handling illegal accesses in page_fault()
+function is very straightforward and easy to understand. Additionally, the 
+improved method of only checking first byte of one page clearly 
+outperforms the naive method that checks all the bytes in the data buffer 
+iteratively. 
+
+>> B10: What advantages or disadvantages can you see to your design
+>> for file descriptors?
+
+Advantage: because every process has its own file descriptor counter,
+this ensures only one process can access its file descriptor counter at
+a time. Thus, we don’t have to use a lock to ensure synchronization.
+On the other hand, if multiple processes share a global file descriptor
+counter, we will have to use a global lock to ensure synchronization.
+
+Disadvantage: every process has its own file descriptor counter. Since
+a file can be open by different processes, it will have different file 
+descriptors, which is quite confusing. 
+
+>> B11: The default tid_t to pid_t mapping is the identity mapping.
+>> If you changed it, what advantages are there to your approach?
+
+Since pintos doesn’t support multi-threads in one process, we think it’s ok 
+to directly map tid_t to pid_t.
+
+			   SURVEY QUESTIONS
+			   ================
+
+Answering these questions is optional, but it will help us improve the
+course in future quarters.  Feel free to tell us anything you
+want--these questions are just to spur your thoughts.  You may also
+choose to respond anonymously in the course evaluations at the end of
+the quarter.
+
+>> In your opinion, was this assignment, or any one of the three problems
+>> in it, too easy or too hard?  Did it take too long or too little time?
+
+The system call ‘exec’ and ‘wait’ is difficult for it needs us to figure out all 
+the edge cases and carefully handle synchronization. Also, it takes some
+time to ensure all resources will be freed when an error is detected.   
+
+>> Did you find that working on a particular part of the assignment gave
+>> you greater insight into some aspect of OS design?
+
+Yes, definitely.
+
+>> Is there some particular fact or hint we should give students in
+>> future quarters to help them solve the problems?  Conversely, did you
+>> find any of our guidance to be misleading?
+
+Explain more about the ‘get_user’/’put_user’ trick.
+
+>> Do you have any suggestions for the TAs to more effectively assist
+>> students, either for future quarters or the remaining projects?
+
+Nope.
+
+>> Any other comments?
+
+Nope.

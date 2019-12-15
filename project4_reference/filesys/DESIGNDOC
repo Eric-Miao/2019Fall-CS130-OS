@@ -1,0 +1,466 @@
+         +-------------------------+
+         |    CS 140               |
+         | PROJECT 4: FILE SYSTEMS |
+         |     DESIGN DOCUMENT     |
+         +-------------------------+
+
+---- GROUP ----
+
+>> Fill in the names and email addresses of your group members.
+
+Jingtao Xu <jingtaox@stanford.edu>
+Chenjie Yang <yangcj@stanford.edu>
+
+---- PRELIMINARIES ----
+
+>> If you have any preliminary comments on your submission, notes for the
+>> TAs, or extra credit, please give them here.
+We build the filesystem project with vm enabled.
+
+>> Please cite any offline or online sources you consulted while
+>> preparing your submission, other than the Pintos documentation, course
+>> text, lecture notes, and course staff.
+
+         INDEXED AND EXTENSIBLE FILES
+         ============================
+
+---- DATA STRUCTURES ----
+
+>> A1: Copy here the declaration of each new or changed `struct' or
+>> `struct' member, global or static variable, `typedef', or
+>> enumeration.  Identify the purpose of each in 25 words or less.
+
+#define SECTOR_PTR_CNT (BLOCK_SECTOR_SIZE / sizeof (block_sector_t))
+/* Number of meta data. */
+#define META_PTR_CNT 3
+/* Number of data sectors. */
+#define BLOCK_PTR_CNT (SECTOR_PTR_CNT - META_PTR_CNT)
+/* Number of indirect data sectors. */ 
+#define INDIRECT_BLOCK_CNT 16 
+/* Number of double indirect data sectors. */
+#define DOUBLE_INDIRECT_BLOCK_CNT 1
+/* Number of direct data sectors. */
+#define DATA_BLOCK_CNT (BLOCK_PTR_CNT - INDIRECT_BLOCK_CNT \
+ - DOUBLE_INDIRECT_BLOCK_CNT)
+/* Max length of inode, in bytes .*/
+#define INODE_MAX_LENGTH ((DATA_BLOCK_CNT + \
+                            SECTOR_PTR_CNT * INDIRECT_BLOCK_CNT + \
+                            SECTOR_PTR_CNT * SECTOR_PTR_CNT * \ 
+                            DOUBLE_INDIRECT_BLOCK_CNT) \
+                          * BLOCK_SECTOR_SIZE)
+
+/* On-disk inode.
+   Must be exactly BLOCK_SECTOR_SIZE bytes long. */
+struct inode_disk
+{
+  block_sector_t sectors[BLOCK_PTR_CNT]; /* Sectors. */
+  off_t length; /* File size in bytes. */
+  int type; /* File : 0 ; dir : 1 */
+  unsigned magic; /* Magic number. */
+};
+
+/* In-memory inode. */
+struct inode 
+  {
+    struct list_elem elem; /* Element in inode list. */
+    block_sector_t sector; /* Sector number of disk location. */
+    int open_cnt; /* Number of openers. */
+    bool removed; /* True if deleted, false otherwise. */
+    struct lock inode_lock; /* Lock used for directory. */
+
+    int deny_write_cnt; /* 0: writes ok, >0: deny writes. */
+    struct lock dw_lock; /* Lock for deny write. */
+    struct condition no_writers; /* Condition indicating no writers. */ 
+    int writers; /* Can only deny write when there's no writer. */
+  };
+
+/* Global lock that protects "open_inodes". */
+static struct lock open_inodes_lock;
+
+
+
+
+>> A2: What is the maximum size of a file supported by your inode
+>> structure?  Show your work.
+
+direct data block: 108
+indirect data block: 16
+double indirect block: 1
+total blocks: 108 + 16*128 + 1*128*128 = 18540
+maximum size: 18540 * 512B = (9492480 / 1024 / 1024) MB = 9.052734 MB
+
+---- SYNCHRONIZATION ----
+
+>> A3: Explain how your code avoids a race if two processes attempt to
+>> extend a file at the same time.
+Our implementation ensures that extension of one block(512B) is atomic.
+If one thread wants to extend a block, it will do the following things: first,
+it acquires an exclusive lock on the inode that points to the block that we
+want to extend. Then it uses ”free_map_allocate” to allocate the block in 
+disk, acquire an exclusive lock on this block and zero it out. Then it updates 
+the value of sector number in the inode and release the exclusive lock of the
+inode. Finally it writes things to the new block and release the exclusive 
+lock of the block. The exclusive lock of the inode ensures that the extension
+won’t happen twice. The exclusive lock of the sector ensures that the write of 
+the new sector is atomic. Thus, race is prevented.
+For the update of file length: the update of file length happens after the 
+extension of the whole file. Update the file length means the update of the 
+“length” in the file inode (level 0 inode). We acquire an exclusive lock on 
+the file inode and then modify “length” to prevent race.
+Note that we don’t ensure the whole extension of a file to be atomic. This 
+means if A,B both want to extend 2 blocks of the same file, such a sequence 
+of operations is allowed: B extends the first block and write, A writes the 
+first block, A extends the second block and write, B writes the second block. 
+Then A and B update file length in an arbitrary order.    
+More details can be seen in the “read_block” function in filesys/inode.c. And
+note that the operation of inode is tightly integrated with cache.
+
+>> A4: Suppose processes A and B both have file F open, both
+>> positioned at end-of-file.  If A reads and B writes F at the same
+>> time, A may read all, part, or none of what B writes.  However, A
+>> may not read data other than what B writes, e.g. if B writes
+>> nonzero data, A is not allowed to see all zeros.  Explain how your
+>> code avoids this race.
+
+What A can read is constrained by the current length of file. Since the 
+length will be updated after B has finished the whole extension of file. 
+A won’t read anything before B finish the whole extension. A will read the
+entire extension after B finish the whole extension and update the length.
+
+
+>> A5: Explain how your synchronization design provides "fairness".
+>> File access is "fair" if readers cannot indefinitely block writers
+>> or vice versa.  That is, many processes reading from a file cannot
+>> prevent forever another process from writing the file, and many
+>> processes writing to a file cannot prevent another process forever
+>> from reading the file.
+
+We implemented shared lock (read/write lock). The implementation follows 
+the implementation in lecture note “Synchronization 1”. And each cache 
+slot (512B) has a shared lock with it. However, the file itself has no lock.
+Multiple threads can access a file immediately without acquiring a lock. 
+But if they want to access the same block of the file, there’ll be 
+synchronization for they must acquire shared_lock of this block first. So 
+if multiple threads want to read/write different block of one file, they can 
+do this in parallel. “Fairness” problem will happen when many threads want to
+read/write one particular block. Our design of shared_lock doesn’t consider 
+write starvation. So many threads reading from a block of the file may prevent
+forever another thread from writing this particular block. However, starvation 
+problem on small block(512B) is much serious than starvation on the whole
+file. 
+
+---- RATIONALE ----
+
+>> A6: Is your inode structure a multilevel index?  If so, why did you
+>> choose this particular combination of direct, indirect, and doubly
+>> indirect blocks?  If not, why did you choose an alternative inode
+>> structure, and what advantages and disadvantages does your
+>> structure have, compared to a multilevel index?
+
+Yes, it has at most 3 level index (double indirect block). I only choose 1
+double indirect block because it will take up to 4 disk read(if there’s no 
+cache) to get the data(inode->double indirect->indirect->data). And 1 double
+indirect block is sufficient for 8MB capacity. I choose 16 indirect block 
+for it can support around 1MB size file. The left 108 pointers are used for 
+direct data block. 
+
+          SUBDIRECTORIES
+          ==============
+
+---- DATA STRUCTURES ----
+
+>> B1: Copy here the declaration of each new or changed `struct' or
+>> `struct' member, global or static variable, `typedef', or
+>> enumeration.  Identify the purpose of each in 25 words or less.
+
+In thread.h:
+
+struct thread
+  {
+   ...
+    struct dir *working_dir; /* the thread’s current working directory*/
+   ...
+  };
+
+In process.h:
+/* Struct used for managing files or directories that a process has. */
+struct process_file{
+  …
+  struct dir *dir; /* directory that a process has opened
+  ...
+};
+/* Message that includes process information which are needed 
+  for creating process and passing arguments. */
+struct exec_msg
+{ 
+  ...
+  struct dir *working_dir; 
+  /* working directory of parent process. need to pass it to its child */
+  ...
+};
+
+In inode.c:
+/* In-memory inode. */
+struct inode 
+  {
+    ...
+    struct lock inode_lock;/* lock for accessing inode*/
+  };
+
+/* On-disk inode.
+   Must be exactly BLOCK_SECTOR_SIZE bytes long. */
+struct inode_disk
+  {
+    ...
+    int type;    /* the type of inode. File : 0 ; dir : 1 */
+    ...
+  };
+
+---- ALGORITHMS ----
+
+>> B2: Describe your code for traversing a user-specified path.  How
+>> do traversals of absolute and relative paths differ?
+
+First we need to find out whether a path is absolute or relative. What
+we do is to check the first character of the string. If the first char is
+‘/’, it means the path is absolute and we set the current directory to
+the root directory. Otherwise, the path is relative and we set the current
+directory to the thread’s current working directory. In the next step we 
+call the function next_string() which returns the next file/directory in the
+path. We look up that directory in the current directory to ensure
+that the path is valid. If the directory doesn’t exist or the name corresponds
+to a file but we are not at the end of path, the path is invalid. If the
+directory exists, we set it to be the current directory and repeat the step
+over and over again until we reach the end of the path.
+Note that we handle ‘.’ and ‘..’ by making them the default directory entries
+of a directory when we create it. So it will be handy to traverse a path
+since we just need to do what we normally do and don’t have to worry
+about these special cases.
+
+---- SYNCHRONIZATION ----
+
+>> B4: How do you prevent races on directory entries?  For example,
+>> only one of two simultaneous attempts to remove a single file
+>> should succeed, as should only one of two simultaneous attempts to
+>> create a file with the same name, and so on.
+We prevent races on directory entries by adding a lock to inode struct.
+Whenever a thread wants to remove a file or add a file to a directory
+(i.e create a file), it needs to acquire the lock of the current directory’s
+inode first. So if two threads simultaneously attempt to create a file 
+with the same name, only one thread will be able to acquire the lock
+and create the file, and the other thread’s call to lookup() will return 
+true because the file is already there after the first thread releases the
+lock, thus failing to create the file.
+
+>> B5: Does your implementation allow a directory to be removed if it
+>> is open by a process or if it is in use as a process's current
+>> working directory?  If so, what happens to that process's future
+>> file system operations?  If not, how do you prevent it?
+We don’t allow a directory to be removed if it is open by a process
+or if it is in use as a process's current working directory. We prevent
+this by checking the open_cnt of a inode when we are trying to remove
+it. If open_cnt is greater than one, then it means that some other 
+processes are using it, and dir_remove() will return immediately
+without making a change.
+
+---- RATIONALE ----
+
+>> B6: Explain why you chose to represent the current directory of a
+>> process the way you did.
+We added struct dir *working_dir to struct thread. Another way to
+represent the current directory of a process is to record its inode.
+But we think the former is better because it’s more intuitive and 
+most of the functions we have written in directory.c take struct dir* 
+as an argument, not inode. Also, by using the former method, chdir
+implementation would be quite simple. All we need to do is to open
+the new directory and replace the current one. 
+
+           BUFFER CACHE
+           ============
+
+---- DATA STRUCTURES ----
+
+>> C1: Copy here the declaration of each new or changed `struct' or
+>> `struct' member, global or static variable, `typedef', or
+>> enumeration.  Identify the purpose of each in 25 words or less.
+
+in threads/synch.h
+/* Shared lock. */
+struct shared_lock 
+{
+  struct lock *l;
+  struct condition c;
+  int i; /* -1: has writer ; >0: has readers. */ 
+};
+
+in filesys/cache.c
+struct cache_entry
+{
+  /* The number of sector cached. */
+  /* (block_sector_t) -1 means this cache slot is empty. */
+  block_sector_t sector; 
+
+  /* Used for clock algorithm .*/
+  bool accessed;
+
+  /* Whether the cache slot has been modified. */
+  /* Indicate write back when cache flush or cache eviction .*/
+  bool dirty;
+
+  /* Whether this cache slot has data. */
+  /* Notice that the cache slot may have an valid sector number 
+  but has no data in it, which means the slot hasn't read data
+  from the disk .*/
+  bool has_data;
+
+  /* Number of read/write waiters for this cache slot. */
+  /* Used in cache eviction. When evction, we won't evict slots
+  that have read/write waiters. */ 
+  int waiters;
+
+  /* Data cached */
+  /* Protected by shared_lock sl */
+  uint8_t data[BLOCK_SECTOR_SIZE];
+
+  /* Lock for preventing race. */
+  /* Also used in shared lock .*/
+  struct lock l;
+
+  /* Read/write lock */
+  /* See thread/synch.c for details */
+  struct shared_lock sl;
+
+  /* Data lock, only used to protect has_data. */
+  struct lock has_data_lock;
+};
+
+#define CACHE_SIZE 64
+struct cache_entry cache[CACHE_SIZE]; /* Cache .*/
+
+/* Protect clock hand .*/
+struct lock cache_lock;
+
+/* Hand for clock algorithm */
+int hand;
+
+/* Data struct used in readahead */
+struct readahead_s
+{
+  struct list_elem elem; /* Elem for list */
+  block_sector_t sector; /* Sector to be read ahead */
+};
+
+/* List of sectors to be read ahead */
+static struct list readahead_list;
+/* Global lock that protects readahead_list */
+static struct lock readahead_lock;
+/* Signed when a new sector is added to the empty readahead list */
+static struct condition need_readahead;
+
+
+---- ALGORITHMS ----
+
+>> C2: Describe how your cache replacement algorithm chooses a cache
+>> block to evict.
+
+We use clock algorithm to choose a cache block to evict. Each cache entry 
+has flags for accessed and dirty bits, very similar with vm frame tables. We 
+reset the accessed bit to give entries a second chance if they have been 
+recently accessed.
+Just as “pinning” in frame table, our cache evict algorithm will ignore the 
+cache entry that is been read/write, or is been operated on(this means we 
+fail to acquire the “lock l” of this cache entry).
+Our optimization is: Suppose we decide to evict a cache entry A, if it is 
+dirty, then we must first write back then actually evict it. Since write 
+back needs disk write and it is time consuming, during this time some other 
+threads may start waiting for this cache entry to write/read. If this happens
+, after write back we give this cache entry to the waiter and continue to try 
+to evict another entry. We use this idea because if one cache entry has 
+waiters, it seems more “important” and is accessed more frequently.
+
+>> C3: Describe your implementation of write-behind.
+
+We implement write-behind just as the requirement of the assignment. We 
+keep dirty blocks in the cache, instead of immediately writing modified data 
+to disk. And we write dirty blocks to disk whenever they are evicted. The 
+dirty cache blocks will also been written back when filesys_done() is called.
+We also implement the cache flush daemon. Every 10s, the cache flush 
+daemon will write dirty blocks to disk. The procedure is non-block, which
+means a block that is been read or written will be ignored.
+
+>> C4: Describe your implementation of read-ahead.
+
+Every we read a block in function “inode_read_at” or “inode_write_at”, we 
+will check its next block. If the next block has been allocated in disk, we 
+add the sector number of it to the “readahead_list”. There’s a readahead 
+daemon in background to check the “readahead_list” to actually read the 
+next block from disk to cache.
+ 
+
+
+---- SYNCHRONIZATION ----
+
+>> C5: When one process is actively reading or writing data in a
+>> buffer cache block, how are other processes prevented from evicting
+>> that block?
+
+If a process P is actively reading cache block A, it must have held the 
+non-exclusive lock of A. If P is actively writing cache block A, it must have 
+held the exclusive lock of A. When other process (like Q) want to evict A, 
+it must first acquire an exclusive lock on A. Q will fail to acquire the 
+exclusive lock if P already has held non-exclusive/exclusive lock on A. This
+means Q can’t evict A until P releases the lock, thus preventing race.
+
+>> C6: During the eviction of a block from the cache, how are other
+>> processes prevented from attempting to access the block?
+
+If process P can evict cache block A, it must have held an exclusive lock
+on A. Other process(like Q) can’t read/write A during eviction, for Q can’t 
+acquire non-exclusive/exclusive lock on A.
+Note our optimization of evict algorithm described in C2: during write back, 
+If Q starts waiting for A to write/read. P will give A to Q after write back.
+Then P will continue to try to evict another block. 
+
+---- RATIONALE ----
+
+>> C7: Describe a file workload likely to benefit from buffer caching,
+>> and workloads likely to benefit from read-ahead and write-behind.
+
+File workloads that will likely benefit from buffer caching is: Repeatedly 
+read/write to the same small set of file blocks(less than 64 blocks is best) 
+before file close. 
+File workloads that will likely benefit from read_ahead is: access data in 
+files sequentially.
+File workloads that will likely benefit from write_behind is: Repeatedly 
+modify the same small set of file blocks. Then we don’t need to do expensive 
+disk write every time.
+
+ 
+
+         SURVEY QUESTIONS
+         ================
+
+Answering these questions is optional, but it will help us improve the
+course in future quarters.  Feel free to tell us anything you
+want--these questions are just to spur your thoughts.  You may also
+choose to respond anonymously in the course evaluations at the end of
+the quarter.
+
+>> In your opinion, was this assignment, or any one of the three problems
+>> in it, too easy or too hard?  Did it take too long or too little time?
+The integration of cache and inode is hard. The synchronization of cache
+is hard. 
+
+>> Did you find that working on a particular part of the assignment gave
+>> you greater insight into some aspect of OS design?
+Yes, especially the inode part.
+
+>> Is there some particular fact or hint we should give students in
+>> future quarters to help them solve the problems?  Conversely, did you
+>> find any of our guidance to be misleading?
+
+>> Do you have any suggestions for the TAs to more effectively assist
+>> students in future quarters?
+
+>> Any other comments?
+
