@@ -88,7 +88,7 @@ start_process (void *file_name_)
   {
     t->tid=-1;
     thread_current()->parent->if_child_success=false;
-    printf("\n\n I am here\n\n\n");
+    //printf("\n\n I am here\n\n\n");
 
     sema_up(&t->parent->exec_sema);
     /* sema_down(&t->exec_sema); */
