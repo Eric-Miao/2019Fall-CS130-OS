@@ -9,15 +9,29 @@
 
 /* Identifies an inode. */
 #define INODE_MAGIC 0x494e4f44
-
+/* Sector pointer number per block_sector_size, the size of struct disk_inode.  */
+#define NUM_BLOCK_PTR_PER_INODE (BLOCK_SECTOR_SIZE / sizeof(block_sector_t))
+/* Number of other mata property except the arrary in disk_inode. */
+#define NUM_META_EXCEPT_ARRARY 3
+/* Number of direct data sectors in arrary */
+#define NUM_DATA_SECTOR 10
+/* Number of 1st order indirect sectors */
+#define NUM_INDIRECT_SECTOR 1
+/* Number of 2nd order double indirect sectors */
+#define NUM_DOUBLE_INDIRECT_SECTOR 1
+/* Used to set the size of the array  */
+#define NUM_TOTAL_SECTOR_IN_ARRAY (NUM_DATA_SECTOR + NUM_INDIRECT_SECTOR + NUM_DOUBLE_INDIRECT_SECTOR)
+/* Number of unused space in disk_inode to align with BLOCK_SECTOR_SIZE.*/
+#define NUM_UNUSED_SECOTR (NUM_BLOCK_PTR_PER_INODE - NUM_META_EXCEPT_ARRARY - NUM_TOTAL_SECTOR_IN_ARRAY)
 /* On-disk inode.
    Must be exactly BLOCK_SECTOR_SIZE bytes long. */
 struct inode_disk
   {
-    block_sector_t start;               /* First data sector. */
+    // block_sector_t start;               /* First data sector. */
+    block_sector_t blocks[NUM_TOTAL_SECTOR_IN_ARRAY]; /* Array of blocks for data, 10+1+1. */
     off_t length;                       /* File size in bytes. */
     unsigned magic;                     /* Magic number. */
-    uint32_t unused[125];               /* Not used. */
+    uint32_t unused[NUM_UNUSED_SECOTR]; /* Not used to align. */
   };
 
 /* Returns the number of sectors to allocate for an inode SIZE
