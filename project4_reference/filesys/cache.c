@@ -12,7 +12,7 @@ struct cache_entry
 {
 	/* The number of sector cached. */
 	/* (block_sector_t) -1 means this cache slot is empty. */
-	block_sector_t sector; 
+	block_sector_t sector;
 
 	/* Used for clock algorithm .*/
 	bool accessed;
@@ -29,7 +29,7 @@ struct cache_entry
 
 	/* Number of read/write waiters for this cache slot. */
 	/* Used in cache eviction. When evction, we won't evict slots
-	that have read/write waiters. */ 
+	that have read/write waiters. */
 	int waiters;
 
 	/* Data cached */
@@ -71,39 +71,39 @@ static struct lock readahead_lock;
 /* Signed when a new sector is added to the empty readahead list */
 static struct condition need_readahead;
 
-static void cache_readahead_daemon (void *aux UNUSED);
-static void cache_flush_daemon (void *aux UNUSED);
+static void cache_readahead_daemon(void *aux UNUSED);
+static void cache_flush_daemon(void *aux UNUSED);
 
 /* Init cache */
-void cache_init (void)
-{	
+void cache_init(void)
+{
 	/* Init cache slots */
 	struct cache_entry *ce;
 	int i;
-  for (i = 0; i < CACHE_SIZE; i++) 
-  {
-  	ce = &cache[i];
-  	ce->sector = (block_sector_t) -1;
-  	lock_init (&ce->l);
-  	shared_lock_init (&ce->sl, &ce->l);
-  	lock_init (&ce->has_data_lock);
-  	ce->accessed = false;
-  	ce->dirty = false;
-  	ce->has_data = false;
-  	ce->waiters = 0;
-  }
+	for (i = 0; i < CACHE_SIZE; i++)
+	{
+		ce = &cache[i];
+		ce->sector = (block_sector_t)-1;
+		lock_init(&ce->l);
+		shared_lock_init(&ce->sl, &ce->l);
+		lock_init(&ce->has_data_lock);
+		ce->accessed = false;
+		ce->dirty = false;
+		ce->has_data = false;
+		ce->waiters = 0;
+	}
 
-  lock_init (&cache_lock);
-  hand = -1;
+	lock_init(&cache_lock);
+	hand = -1;
 
-  /* Create cache flush daemon. */
-  thread_create ("cache_flush_daemon", PRI_MIN, cache_flush_daemon, NULL);
+	/* Create cache flush daemon. */
+	thread_create("cache_flush_daemon", PRI_DEFAULT, cache_flush_daemon, NULL);
 
-  /* Init read ahead daemon */
-  list_init (&readahead_list);
-  lock_init (&readahead_lock);
-  cond_init (&need_readahead);
-  thread_create ("cache_readahead_daemon", PRI_MIN, cache_readahead_daemon, NULL);
+	/* Init read ahead daemon */
+	list_init(&readahead_list);
+	lock_init(&readahead_lock);
+	cond_init(&need_readahead);
+	thread_create("cache_readahead_daemon", PRI_DEFAULT, cache_readahead_daemon, NULL);
 }
 
 /* Allocate a cache slot for given "sector" and lock it. */
@@ -117,180 +117,179 @@ Multiple threads can hold read lock at the same time and read the cache
 slot. If "exclusive" is true, the caller wants a write lock. Only one
 thread can hold write lock at the same time, preventing race from other
 readers/writers. */
-struct cache_entry* 
-cache_alloc_and_lock (block_sector_t sector, bool exclusive)
-{	
+struct cache_entry *
+cache_alloc_and_lock(block_sector_t sector, bool exclusive)
+{
 	struct cache_entry *ce;
 	int i;
 
 begin:
 	/* Acquire global lock first .*/
-	lock_acquire (&cache_lock);
-	/* Sector may have been cached, check it .*/ 
-	for (i = 0 ; i < CACHE_SIZE ; i++)
-	{	
+	lock_acquire(&cache_lock);
+	/* Sector may have been cached, check it .*/
+	for (i = 0; i < CACHE_SIZE; i++)
+	{
 		ce = &cache[i];
-		lock_acquire (&ce->l);
+		lock_acquire(&ce->l);
 		if (ce->sector != sector)
-		{	
-			lock_release (&ce->l);
+		{
+			lock_release(&ce->l);
 			continue;
 		}
 
 		/* No longer need the global lock 
 		for we hold lock l. */
-		lock_release (&cache_lock);
+		lock_release(&cache_lock);
 
 		/* Acquire read/write lock. */
 		ce->waiters++;
-		shared_lock_acquire (&ce->sl, exclusive);
+		shared_lock_acquire(&ce->sl, exclusive);
 		ce->waiters--;
 
-		ASSERT (ce->sector == sector);
+		ASSERT(ce->sector == sector);
 
-		lock_release (&ce->l);
+		lock_release(&ce->l);
 		return ce;
 	}
 
 	/* Try to find an empty slot. */
-	for (i = 0 ; i < CACHE_SIZE ; i++)
-	{	
+	for (i = 0; i < CACHE_SIZE; i++)
+	{
 		ce = &cache[i];
-		lock_acquire (&ce->l);
-		if (ce->sector != (block_sector_t) -1)
-		{	
-			lock_release (&ce->l);
+		lock_acquire(&ce->l);
+		if (ce->sector != (block_sector_t)-1)
+		{
+			lock_release(&ce->l);
 			continue;
 		}
 
 		/* No longer need the global lock 
 		for we hold lock l. */
-		lock_release (&cache_lock);
+		lock_release(&cache_lock);
 
 		ce->sector = sector;
 		ce->accessed = false;
-  	ce->dirty = false;
-  	ce->has_data = false;
-  	ce->waiters = 0;
+		ce->dirty = false;
+		ce->has_data = false;
+		ce->waiters = 0;
 
-  	/* We can get the read/write lock immediately since
+		/* We can get the read/write lock immediately since
   	the slot has just been allocated and we hold lock l. */
-		ASSERT (shared_lock_try_acquire (&ce->sl, exclusive));
+		ASSERT(shared_lock_try_acquire(&ce->sl, exclusive));
 		/* We hold lock l now, so no one can wait for this slot. */
-		ASSERT (ce->waiters == 0);
-		lock_release (&ce->l);
+		ASSERT(ce->waiters == 0);
+		lock_release(&ce->l);
 		return ce;
 	}
 
 	/* Try to evict one slot. */
 	for (i = 0; i < CACHE_SIZE * 2; i++)
-	{	
+	{
 		if (++hand >= CACHE_SIZE)
 			hand = 0;
 
 		ce = &cache[hand];
-		if(!lock_try_acquire (&ce->l))
+		if (!lock_try_acquire(&ce->l))
 			continue;
 		/* Try to acquire an exclusive lock on this slot. */
-		else if (!shared_lock_try_acquire (&ce->sl, true))
-		{	
-			lock_release (&ce->l);
+		else if (!shared_lock_try_acquire(&ce->sl, true))
+		{
+			lock_release(&ce->l);
 			continue;
 		}
 		/* We don't evict this slot if it has waiters. */
 		else if (ce->waiters != 0)
-		{	
-			shared_lock_release (&ce->sl, true);
-			lock_release (&ce->l);
+		{
+			shared_lock_release(&ce->sl, true);
+			lock_release(&ce->l);
 			continue;
 		}
 		else if (ce->accessed)
-		{	
+		{
 			/* Clock algorithm. */
 			ce->accessed = false;
-			shared_lock_release (&ce->sl, true);
-			lock_release (&ce->l);
+			shared_lock_release(&ce->sl, true);
+			lock_release(&ce->l);
 			continue;
 		}
 
 		/* No longer need the global lock 
 		for we hold lock l. */
-		lock_release (&cache_lock);
+		lock_release(&cache_lock);
 
 		/* Write back if the slot is dirty. */
-		if (ce->has_data && ce->dirty) 
-    {	
-    	lock_release (&ce->l);
-    	block_write (fs_device, ce->sector, ce->data);
-    	ce->dirty = false;
-    	lock_acquire (&ce->l);
-    }
+		if (ce->has_data && ce->dirty)
+		{
+			lock_release(&ce->l);
+			block_write(fs_device, ce->sector, ce->data);
+			ce->dirty = false;
+			lock_acquire(&ce->l);
+		}
 
-    /* During writing back, someone may start waiting 
+		/* During writing back, someone may start waiting 
     for this slot since we released the lock l. If so, 
     give the slot to the waiter. */
-    if (ce->waiters == 0)
-    {	
-    	/* If no waiters, evict the slot. */
-    	ce->sector = (block_sector_t) -1;
-    }
+		if (ce->waiters == 0)
+		{
+			/* If no waiters, evict the slot. */
+			ce->sector = (block_sector_t)-1;
+		}
 
-    shared_lock_release (&ce->sl, true);
-    lock_release (&ce->l);
+		shared_lock_release(&ce->sl, true);
+		lock_release(&ce->l);
 
-    /* Try again. */
-    goto begin;
-  }
+		/* Try again. */
+		goto begin;
+	}
 
-  /* Wait for a while and then try again. */
-  lock_release (&cache_lock);
-  timer_msleep (100);
-  goto begin;
+	/* Wait for a while and then try again. */
+	lock_release(&cache_lock);
+	timer_msleep(100);
+	cache_alloc_and_lock(sector, exclusive);
 }
 
-/* Release the read/write lock of the cache slot. */ 
-void 
-cache_unlock (struct cache_entry* ce, bool exclusive)
-{	
-	lock_acquire (&ce->l);
-	shared_lock_release (&ce->sl, exclusive);
-	lock_release (&ce->l);
+/* Release the read/write lock of the cache slot. */
+void cache_unlock(struct cache_entry *ce, bool exclusive)
+{
+	lock_acquire(&ce->l);
+	shared_lock_release(&ce->sl, exclusive);
+	lock_release(&ce->l);
 }
 
 /* Return the data pointer of the cache slot. */
 /* If "zero" is true, zero out the cache slot and return the pointer. */
 /* If "zero" is false, first check whether the slot has data. If it doesn't
 have data, read data from the disk. If it already has data, directly return
-the pointer. */ 
+the pointer. */
 /* The caller must have an read/write lock on the slot. */
-void* 
-cache_get_data (struct cache_entry* ce, bool zero)
-{	
+void *
+cache_get_data(struct cache_entry *ce, bool zero)
+{
 	if (zero)
-	{	
+	{
 		/* The caller should hold write lock. */
-		memset (ce->data, 0, BLOCK_SECTOR_SIZE);
+		memset(ce->data, 0, BLOCK_SECTOR_SIZE);
 		ce->dirty = true;
 		ce->has_data = true;
 	}
 	else
-  {	
-  	/* The caller should hold read lock. */
+	{
+		/* The caller should hold read lock. */
 
-  	/* Need to acquire has_data_lock first, because
+		/* Need to acquire has_data_lock first, because
   	a read lock can't protect "has_data" and "dirty". */
-  	lock_acquire (&ce->has_data_lock);
-  	if (!ce->has_data)
-  	{ 
-  		block_read (fs_device, ce->sector, ce->data);
-  		ce->dirty = false;
-  		ce->has_data = true;
-  	} 
-  	lock_release (&ce->has_data_lock);
-  }
+		lock_acquire(&ce->has_data_lock);
+		if (!ce->has_data)
+		{
+			block_read(fs_device, ce->sector, ce->data);
+			ce->dirty = false;
+			ce->has_data = true;
+		}
+		lock_release(&ce->has_data_lock);
+	}
 
-  ce->accessed = true;
-  return ce->data;
+	ce->accessed = true;
+	return ce->data;
 }
 
 /* Find the cache slot of the given "sector" and
@@ -298,120 +297,116 @@ evict it immediately. No need to write back even if
 the slot is dirty. This is because "free_map_release" 
 will be called after this function, and thus the sector
 in disk will be deallocated. */
-void
-cache_dealloc (block_sector_t sector) 
+void cache_dealloc(block_sector_t sector)
 {
-  int i;
-  struct cache_entry *ce;
-  
-  lock_acquire (&cache_lock);
-  for (i = 0; i < CACHE_SIZE; i++)
-  {
-  	ce = &cache[i];
-  	lock_acquire (&ce->l);
-  	if (ce->sector == sector) 
-  	{
-  		lock_release (&cache_lock);
-			
+	int i;
+	struct cache_entry *ce;
+
+	lock_acquire(&cache_lock);
+	for (i = 0; i < CACHE_SIZE; i++)
+	{
+		ce = &cache[i];
+		lock_acquire(&ce->l);
+		if (ce->sector == sector)
+		{
+			lock_release(&cache_lock);
+
 			/* No one should have hold read/write lock
 			on this slot, or wait for it. */
-			ASSERT (shared_lock_try_acquire (&ce->sl, true))
-			ASSERT (ce->waiters == 0)
-			ce->sector = (block_sector_t) -1;
-			shared_lock_release (&ce->sl, true);
-			
-			lock_release (&ce->l);
+			ASSERT(shared_lock_try_acquire(&ce->sl, true))
+			ASSERT(ce->waiters == 0)
+			ce->sector = (block_sector_t)-1;
+			shared_lock_release(&ce->sl, true);
+
+			lock_release(&ce->l);
 			return;
-    }
-    lock_release (&ce->l);
-  }
-  lock_release (&cache_lock);
+		}
+		lock_release(&ce->l);
+	}
+	lock_release(&cache_lock);
 }
 
 /* Set the cache slot to be dirty */
-void 
-cache_mark_dirty (struct cache_entry *ce)
-{	
-	ASSERT (ce->has_data);
+void cache_mark_dirty(struct cache_entry *ce)
+{
+	ASSERT(ce->has_data);
 	ce->dirty = true;
 }
 
 /* Flush dirty cache slot to disk */
-void
-cache_flush (void) 
+void cache_flush(void)
 {
-  struct cache_entry *ce;
-  block_sector_t sector;
-  int i;
-  
-  for (i = 0; i < CACHE_SIZE; i++)
-  {
-  	ce = &cache[i];
-  	lock_acquire (&ce->l);
-    sector = ce->sector;
+	struct cache_entry *ce;
+	block_sector_t sector;
+	int i;
 
-    if (sector == (block_sector_t) -1)
-    {
-    	lock_release (&ce->l);
-    	continue;
-    }
+	for (i = 0; i < CACHE_SIZE; i++)
+	{
+		ce = &cache[i];
+		lock_acquire(&ce->l);
+		sector = ce->sector;
 
-   	lock_release (&ce->l);
-    ce = cache_alloc_and_lock (sector, true);
-    if (ce->has_data && ce->dirty) 
-    {	
-    	/* Need to write back if dirty. */
-    	block_write (fs_device, ce->sector, ce->data);
-    	ce->dirty = false; 
-    }
-    cache_unlock (ce, true);
-  }
+		if (sector == (block_sector_t)-1)
+		{
+			lock_release(&ce->l);
+			continue;
+		}
+
+		lock_release(&ce->l);
+		ce = cache_alloc_and_lock(sector, true);
+		if (ce->has_data && ce->dirty)
+		{
+			/* Need to write back if dirty. */
+			block_write(fs_device, ce->sector, ce->data);
+			ce->dirty = false;
+		}
+		cache_unlock(ce, true);
+	}
 }
 
 /* Add sector to the read ahead list */
-void
-cache_readahead_add (block_sector_t sector) 
+void cache_readahead_add(block_sector_t sector)
 {
-  struct readahead_s *ras = malloc (sizeof *ras);
-  if (ras == NULL)
-    return;
- 	ras->sector = sector;
+	struct readahead_s *ras = malloc(sizeof *ras);
+	if (ras == NULL)
+		return;
+	ras->sector = sector;
 
-  lock_acquire (&readahead_lock); 
-  list_push_back (&readahead_list, &ras->elem);
-  cond_signal (&need_readahead, &readahead_lock);
-  lock_release (&readahead_lock);
+	lock_acquire(&readahead_lock);
+	list_push_back(&readahead_list, &ras->elem);
+	cond_signal(&need_readahead, &readahead_lock);
+	lock_release(&readahead_lock);
 }
 
-static void 
-cache_flush_daemon (void *aux UNUSED)
-{	
+static void
+cache_flush_daemon(void *aux UNUSED)
+{
 	while (true)
-	{	
-		timer_msleep (20 * 1000);
-		cache_flush ();
+	{
+		timer_msleep(20 * 1000);
+		cache_flush();
 	}
 }
 
 static void
-cache_readahead_daemon (void *aux UNUSED) 
+cache_readahead_daemon(void *aux UNUSED)
 {
-  while (true) 
-  {	
-    lock_acquire (&readahead_lock);
-    /* Wait for non-empty. */
-    while (list_empty (&readahead_list)) 
-    	cond_wait (&need_readahead, &readahead_lock);
-    ASSERT (!list_empty (&readahead_list));
+	while (true)
+	{
+		lock_acquire(&readahead_lock);
+		/* Wait for non-empty. */
+		while (list_empty(&readahead_list))
+			cond_wait(&need_readahead, &readahead_lock);
+		ASSERT(!list_empty(&readahead_list));
 
-    /* Do read ahead. */
-    struct readahead_s *ras = list_entry (list_pop_front (&readahead_list),
-                             struct readahead_s, elem);
-    lock_release (&readahead_lock);
+		/* Do read ahead. */
+		struct readahead_s *ras = list_entry(list_pop_front(&readahead_list),
+											 struct readahead_s, elem);
+		lock_release(&readahead_lock);
 
-    struct cache_entry *ce = cache_alloc_and_lock (ras->sector, false);
-    cache_get_data (ce, false);
-    cache_unlock (ce, false);
-    free (ras);
-  }
+		struct cache_entry *ce = cache_alloc_and_lock(ras->sector, false);
+		cache_get_data(ce, false);
+		cache_unlock(ce, false);
+		free(ras);
+	}
 }
