@@ -61,8 +61,10 @@ struct inode
     struct inode_disk data;             /* Inode content. */
 
     /* Below are self defined properties */
-    // struct lock inode_lock;             /* A node needed to acquire before any operation. */
-    struct semaphore sema_write;        /* A sema to sync multi writer.*/
+    struct lock inode_lock;             /* A node needed to acquire before any operation. */
+    struct lock writer_lock;            /* Lock correspond to the cond var. */
+    struct condition writer_cond;       /* The conditions to raise all writers when no wrtier. */
+    int being_written;                 /* Indicate if the inode is being modified. */ 
   };
 
 /* Returns the block device sector that contains byte offset POS
@@ -202,9 +204,13 @@ inode_open (block_sector_t sector)
   inode->open_cnt = 1;
   inode->deny_write_cnt = 0;
   inode->removed = false;
-  block_read (fs_device, inode->sector, &inode->data);
+  // block_read (fs_device, inode->sector, &inode->data);
 
   /* Should also init the con var or lock here for deny write. */
+  lock_init(&inode->inode_lock);
+  lock_init(&inode->writer_lock);
+  cond_init(&inode->writer_cond);
+  inode->being_written = 0;
 
   lock_release(&lock_open_inodes);
   return inode;
@@ -216,9 +222,9 @@ inode_reopen (struct inode *inode)
 {
   if (inode != NULL)
   {
-    lock_acquire(&open_inodes_lock);
+    lock_acquire(&lock_open_inodes);
     inode->open_cnt++;
-    lock_release(&open_inodes_lock);
+    lock_release(&lock_open_inodes);
   }
   return inode;
 }
@@ -478,7 +484,7 @@ inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset)
   while (size > 0) 
     {
       /* Disk sector to read, starting byte offset within sector. */
-      block_sector_t sector_idx = byte_to_sector (inode, offset);
+      // block_sector_t sector_idx = byte_to_sector (inode, offset);
       int sector_ofs = offset % BLOCK_SECTOR_SIZE;
 
       /* Bytes left in inode, bytes left in sector, lesser of the two. */
@@ -547,20 +553,20 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
   uint8_t *bounce = NULL;
 
   /* Check whether write is allowed. */
-  lock_acquire(&inode->dw_lock);
+  lock_acquire(&inode->writer_lock);
   if (inode->deny_write_cnt > 0)
   {
-    lock_release(&inode->dw_lock);
+    lock_release(&inode->writer_lock);
     return 0;
   }
 
-  inode->writers++;
-  lock_release(&inode->dw_lock);
+  inode->being_written++;
+  lock_release(&inode->writer_lock);
 
   while (size > 0)
   {
     /* Sector to write, starting byte offset within sector. */
-    block_sector_t sector_idx = byte_to_sector(inode, offset);
+    // block_sector_t sector_idx = byte_to_sector(inode, offset);
     int sector_ofs = offset % BLOCK_SECTOR_SIZE;
 
     /* Bytes left in inode, bytes left in sector, lesser of the two. */
@@ -624,10 +630,10 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
     cache_unlock(ce1, true);
 
     /* Finish writing, others can deny write now. */
-    lock_acquire(&inode->dw_lock);
-    if (--inode->writers == 0)
-      cond_signal(&inode->no_writers, &inode->dw_lock);
-    lock_release(&inode->dw_lock);
+    lock_acquire(&inode->writer_lock);
+    if (--inode->being_written == 0)
+      cond_signal(&inode->writer_cond, &inode->writer_lock);
+    lock_release(&inode->writer_lock);
 
     return bytes_written;
 }
@@ -637,13 +643,14 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
 void
 inode_deny_write (struct inode *inode) 
 {
-  lock_acquire(&inode->dw_lock);
+  lock_acquire(&inode->writer_lock);
+
   /* Only can deny write when there's no writer. */
-  while (inode->writers > 0)
-    cond_wait(&inode->no_writers, &inode->dw_lock);
+  while (inode->being_written > 0)
+    cond_wait(&inode->writer_cond, &inode->writer_lock);
   inode->deny_write_cnt++;
   ASSERT(inode->deny_write_cnt <= inode->open_cnt);
-  lock_release(&inode->dw_lock);
+  lock_release(&inode->writer_lock);
 }
 
 /* Re-enables writes to INODE.
@@ -652,11 +659,11 @@ inode_deny_write (struct inode *inode)
 void
 inode_allow_write (struct inode *inode) 
 {
-  lock_acquire(&inode->dw_lock);
+  lock_acquire(&inode->writer_lock);
   ASSERT(inode->deny_write_cnt > 0);
   ASSERT(inode->deny_write_cnt <= inode->open_cnt);
   inode->deny_write_cnt--;
-  lock_release(&inode->dw_lock);
+  lock_release(&inode->writer_lock);
 }
 
 /* Returns the length, in bytes, of INODE's data. */
