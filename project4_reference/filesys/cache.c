@@ -95,15 +95,13 @@ void cache_init(void)
 
 	lock_init(&cache_lock);
 	hand = -1;
-
-	/* Create cache flush daemon. */
-	thread_create("cache_flush_daemon", PRI_DEFAULT, cache_flush_daemon, NULL);
-
 	/* Init read ahead daemon */
 	list_init(&readahead_list);
 	lock_init(&readahead_lock);
 	cond_init(&need_readahead);
 	thread_create("cache_readahead_daemon", PRI_DEFAULT, cache_readahead_daemon, NULL);
+		/* Create cache flush daemon. */
+	thread_create("cache_flush_daemon", PRI_DEFAULT, cache_flush_daemon, NULL);
 }
 
 /* Allocate a cache slot for given "sector" and lock it. */
