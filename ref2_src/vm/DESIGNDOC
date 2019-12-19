@@ -1,0 +1,547 @@
+            +---------------------------+
+            | CS 140                    |
+            | PROJECT 3: VIRTUAL MEMORY	|
+            | DESIGN DOCUMENT           |
+            +---------------------------+
+
+---- GROUP ----
+
+>> Fill in the names and email addresses of your group members.
+
+Yifan Cao <caoyf@shanghaitech.edu.cn>
+Xiaoyu Song <songxy1@shanghaitech.edu.cn>
+
+---- PRELIMINARIES ----
+
+>> If you have any preliminary comments on your submission, notes for the
+>> TAs, or extra credit, please give them here.
+
+>> Please cite any offline or online sources you consulted while
+>> preparing your submission, other than the Pintos documentation, course
+>> text, lecture notes, and course staff.
+
+			PAGE TABLE MANAGEMENT
+			=====================
+
+---- DATA STRUCTURES ----
+
+>> A1: Copy here the declaration of each new or changed `struct' or
+>> `struct' member, global or static variable, `typedef', or
+>> enumeration.  Identify the purpose of each in 25 words or less.
+
+In `vm/frame.h`:
+
+// an entry of the (global or local) frame table (say FT)
+struct frame_table_entry {
+
+    // the frame (physical) address
+    void *frame;
+
+    // the owner of this frame
+    struct thread *owner;
+
+    // the supplemental information for the page
+    struct sup_page_table_entry *sup;
+
+    // the list_elem to be inserted to a global FT
+    struct list_elem elem;
+
+    // the list_elem to be inserted to a local FT
+    struct list_elem elem_owner;
+
+};
+
+// the global frame table struct
+struct frame_table {
+
+    // the frame table
+    struct list table;
+
+    // the lock for synchronization
+    struct lock lock;
+
+};
+
+In `vm/frame.c`:
+
+// the global frame table
+struct frame_table frame_table;
+
+In `vm/page.h`:
+
+// the flag for data and code segments
+#define SUP_SEG  0x4
+
+// an entry of the (local) supplemental page table (say SPT)
+struct sup_page_table_entry {
+
+    // the user virtual address
+    void *user_vaddr;
+
+    // some flags
+    uint32_t flags;
+
+    // the file, which will be read when a page fault occurs
+    struct file *file;
+
+    // the offset of the file to be read
+    off_t offset;
+
+    // the number of bytes read from the file
+    size_t read_bytes;
+
+    // the file is writable or not
+    bool writable;
+
+    // the page cannot be evicted when pinned (set to true)
+    bool pin;
+
+    // the pointer to the corresponding entry in the global and local FTs
+    struct frame_table_entry *frame;
+
+    // the lock for synchronization
+    struct lock lock;
+
+    // the hash_elem to be inserted to the supplemental page table
+    struct hash_elem elem;
+
+};
+
+In `threads/thread.h`:
+
+struct thread {
+
+    // ...
+
+    // the stack pointer which is saved for handling a page fault
+    void *esp;
+
+    // the (local) FT which stores information about frames, and allows
+    // efficient implementation of eviction policy
+    struct list frame_table;
+
+    // the (local) SPT which stores more information about a page, and
+    // is useful in page fault handling
+    struct hash sup_page_table;
+
+};
+
+In `userprog/exception.c`:
+
+// the stack limit (8 MiB from the base)
+#define STACK_LIMIT (PHYS_BASE - 8 * 0x100000)
+
+---- ALGORITHMS ----
+
+>> A2: In a few paragraphs, describe your code for accessing the data
+>> stored in the SPT about a given page.
+
+In `load_segment()`, we `malloc()` one SPT entry for every page, and
+store some relative information, which could be the user virtual
+address, the file pointer, the offset of the file, the number of bytes
+read, writable or not, etc. Then we insert it to the SPT of the current
+process. We remove the code for allocating pages, so that it the pages
+are loaded lazily.
+
+When a page fault occurs on a code or data segment access, we take the
+fault address and look it up in the SPT of the current process. If we
+cannot find it, the page fault indicates an error and will exit the
+process. Otherwise, we find the SPT entry and load the page. Given the
+information in the SPT entry, we allocate a page, read the file for
+several bytes at some offset to the page, and fill the remaining part
+of the page to zeros. Then we install this page, i.e. initialize a map
+from the virtual address to the physical address, in the page table.
+
+When a page fault occurs on stack growth, we take the fault address
+and allocate a page for it, and then install this page. We do not
+need to deal with the `esp`, since it has already been pointed to the
+correct user virtual address before the page fault.
+
+>> A3: How does your code coordinate accessed and dirty bits between
+>> kernel and user virtual addresses that alias a single frame, or
+>> alternatively how do you avoid the issue?
+
+We avoid this by accessing only through user virtual addresses, and
+the addresses stored in SPTs are all user virtual addresses.
+
+---- SYNCHRONIZATION ----
+
+>> A4: When two user processes both need a new frame at the same time,
+>> how are races avoided?
+
+We get a page using `palloc_get_page()`, which acquires a lock when
+accessing to the internal bitmap, and allows for parallelism. In
+addition, we insert it to the global and local FTs. This could cause
+races, and we acquire the global lock for the FT to avoid this.
+
+---- RATIONALE ----
+
+>> A5: Why did you choose the data structure(s) that you did for
+>> representing virtual-to-physical mappings?
+
+The FT uses a linked list. Inserting to or removing from the table takes
+constant time, and it is easy to iterate when applying the clock algorithm
+in an eviction. It is also pointed by the SPT entry, so that finding a FT
+entry takes constant time.
+
+The supplemental page table uses a hash table, with the user virtual
+address as the key. Since a page fault only gives a fault address,
+the hash table is fast to find the SPT entry given the address (takes
+constant time on average).
+
+When loading a page lazily, we allocate a SPT entry and store useful
+information for loading in it. The required information is slightly
+different for a page on stack or code/data segment, but we use only one
+SPT entry struct for simplicity.
+
+
+		       PAGING TO AND FROM DISK
+		       =======================
+
+---- DATA STRUCTURES ----
+
+>> B1: Copy here the declaration of each new or changed `struct' or
+>> `struct' member, global or static variable, `typedef', or
+>> enumeration.  Identify the purpose of each in 25 words or less.
+
+In `vm/page.h`:
+
+// the flag for swap pages
+#define SUP_SWAP 0x1
+
+// an entry of the (local) supplemental page table
+struct sup_page_table_entry {
+
+    // ...
+
+    // if the current page is in the swap disk, this index locates it
+    size_t swap_index;
+
+};
+
+In `vm/swap.h`:
+
+// the number of sectors per page
+#define SECTORS_PAGE (PGSIZE / BLOCK_SECTOR_SIZE)
+
+// the swap table
+struct swap_table {
+
+    // the block of the swap disk
+    struct block *block;
+
+    // the bitmap, which indicates a swap slot is used or not
+    struct bitmap *bitmap;
+
+    // the lock for synchronization
+    struct lock lock;
+
+};
+
+In `vm/swap.c`:
+
+// the global swap table
+struct swap_table swap_table;
+
+
+---- ALGORITHMS ----
+
+>> B2: When a frame is required but none is free, some frame must be
+>> evicted.  Describe your code for choosing a frame to evict.
+
+We use the clock algorithm.
+
+1. Iterate over the FT list from begin to end repeatedly, i.e. when
+   the end is reached, move to begin.
+2. Get the SPT entry of the FT entry.
+3. Check if the page is pinned in SPT.
+   a. If pinned, continue.
+   b. Otherwise, get the owner of this page in SPT, and check if the
+      accessed bit of this page. If the accessed bit is true, set it
+      to false and continue. Otherwise,
+      A. If the page is for mapped files, check if the dirty bit is
+         true. If so, write the data to the file.
+      B. Otherwise, the page is for data or code segment, or it is a
+         swap page (including stack pages). If it is for data or code
+         segment, change the type to a swap page. In either case,
+         get a swap slot, and write the data to the slot.
+      C. In either case, remove the FT entry from the global and local
+         FTs, and set the FT entry pointer in the SPT to NULL, and
+         uninstall the page from the owner process. If the flag has
+         PAL_ZERO, fill the page with zeros. Finally, return this page.
+4. Repeat.
+
+>> B3: When a process P obtains a frame that was previously used by a
+>> process Q, how do you adjust the page table (and any other data
+>> structures) to reflect the frame Q no longer has?
+
+We remove the FT entry from the global and local FTs, set the FT entry
+pointer in the SPT to NULL, and uninstall the page from the owner
+process. The page isn't freed, since it will have another owner, and a
+new FT entry with the new owner information will appear later.
+
+>> B4: Explain your heuristic for deciding whether a page fault for an
+>> invalid virtual address should cause the stack to be extended into
+>> the page that faulted.
+
+If the SPT entry is not found, the page fault could be caused by stack
+growth. If the fault address is below the stack pointer, it is either
+invalid, or valid PUSH (addr == esp - 4) or PUSHA (addr == esp - 32)
+instructions. The fault address may also be above the stack pointer
+(addr >= esp), and it is perfectly valid.
+
+In any of the three cases, we conclude that the fault is caused by
+stack growth. However, if the stack pointer is below the limit (i.e.
+8 MiB from the base address), a stack overflow occurred, and the
+process should be terminated. Otherwise, we allocate a page for this
+address and install it.
+
+---- SYNCHRONIZATION ----
+
+>> B5: Explain the basics of your VM synchronization design.  In
+>> particular, explain how it prevents deadlock.  (Refer to the
+>> textbook for an explanation of the necessary conditions for
+>> deadlock.)
+
+1. Before trying to access an entry or modifying the FT, a global
+   lock should be acquired. This includes getting, freeing and
+   evicting a page, and removing all entries from the table during
+   the process exit.
+2. Before evicting, pinning or unpinning a page, the lock of the SPT
+   should be acquired. Before read or write system calls, or loading
+   a page, the page is pinned, and it is unpinned after that.
+3. Before reading from or writing to the swap block, or accessing
+   the swap bitmap, a global swap lock should be acquired.
+4. The critical sections for the swap lock or pinning or unpinning a
+   page do not try to acquire any other locks, so deadlocks can't
+   happen here.
+5. The only place that concerns could be the eviction. First, it
+   acquires the FT lock before the iteration. For one entry, it acquires
+   the lock of its SPT. If it could be evicted, it acquires a swap lock.
+   In other words, the eviction causes the process holding three locks
+   at the same time. As we mentioned above, the swap lock doesn't
+   matter. The deadlock happens only when there is another process
+   holding the lock of the SPT, but waiting for the FT lock. This is
+   impossible, since a process doesn't wait for the FT lock in any
+   critical sections for the SPT lock in our implementation. The FT lock
+   is either acquired before (i.e. eviction), or doesn't need to be
+   acquired (i.e. pinning or unpinning).
+
+>> B6: A page fault in process P can cause another process Q's frame
+>> to be evicted.  How do you ensure that Q cannot access or modify
+>> the page during the eviction process?  How do you avoid a race
+>> between P evicting Q's frame and Q faulting the page back in?
+
+If P evicts a page of Q while Q is accessing or modifying the page,
+Q either succeeds or fails to do that. If succeeds, and the page
+changes during the modification, we should make sure that it is written
+to the swap block. This is guaranteed, since we uninstall the page
+before we swap out this page to the block. If fails, a page fault
+occurs for Q. P is holding the lock of the SPT entry, and Q cannot pin
+the page which needs to acquire this lock, until the eviction by P is
+completed. Either case avoids a race between P and Q.
+
+>> B7: Suppose a page fault in process P causes a page to be read from
+>> the file system or swap.  How do you ensure that a second process Q
+>> cannot interfere by e.g. attempting to evict the frame while it is
+>> still being read in?
+
+Before P loads the page, it pins it in the SPT entry. A second process
+Q may interfere when it is trying to evict the frame. However, since
+this page is pinned, it cannot evict this page. Loading a page requires
+to modify the FT (i.e. add a new entry), but the global lock is acquired
+before that. There won't be deadlocks as we stated above.
+
+>> B8: Explain how you handle access to paged-out pages that occur
+>> during system calls.  Do you use page faults to bring in pages (as
+>> in user programs), or do you have a mechanism for "locking" frames
+>> into physical memory, or do you use some other design?  How do you
+>> gracefully handle attempted accesses to invalid virtual addresses?
+
+During system calls, we pin the user pages, which could be buffers or
+or strings, before we actually access them, so that they won't be
+evicted later. When a system call is done, we unpin the pages.
+
+We check the validity before the access, but after the pinning. This
+is done by trying to read from or write to a location. If fails, a
+page fault will occur. If the handler finds that the page does not
+exist, and it is not caused by the stack growth, this is the case
+that the address is invalid. In this case, we merely sets `eax` to
+0xffffffff and copies its former value into `eip`. This could be caught
+by the system call handler, and it could then exit the process. If
+the page fault handler finds that the page exists in the swap or
+mapped files, it will load the page. Since this page is pinned before,
+it won't be evicted again until the system call completes. In other
+words, all future accesses to the pages won't cause page faults.
+
+---- RATIONALE ----
+
+>> B9: A single lock for the whole VM system would make
+>> synchronization easy, but limit parallelism.  On the other hand,
+>> using many locks complicates synchronization and raises the
+>> possibility for deadlock but allows for high parallelism.  Explain
+>> where your design falls along this continuum and why you chose to
+>> design it this way.
+
+We have a global FT lock and swap device lock, so that we could make
+sure that the two global data structures are race free from
+parallelism. There cannot be more locks for this.
+
+We have a lock for a SPT entry, so that races could be avoided when
+an eviction happens at any given time. Since an eviction is related to
+only one page, there could be one lock for every page.
+
+We have a pin for a SPT entry. If the page is pinned, it cannot be
+evicted. Compared to the lock, the pin method could avoid deadlocks
+since it makes the critical section smaller (the only expression is
+setting the pin), and allow for some parallelism (e.g. the evicting
+process could find that the page is pinned and continue when the page
+is loading in the page fault handler).
+
+			 MEMORY MAPPED FILES
+			 ===================
+
+---- DATA STRUCTURES ----
+
+>> C1: Copy here the declaration of each new or changed `struct' or
+>> `struct' member, global or static variable, `typedef', or
+>> enumeration.  Identify the purpose of each in 25 words or less.
+
+In `vm/page.h`:
+
+// the flag for file mapping pages
+#define SUP_MMAP 0x1
+
+// an entry of the (local) table of file mappings
+struct mmap_entry {
+
+    // the map id
+    mapid_t mid;
+
+    // the number of pages in this map
+    size_t num_pages;
+
+    // the user virtual address of the first page
+    void *user_vaddr;
+
+    // the pointer of the mapped file
+    struct file *file;
+
+    // the hash_elem to be inserted to the table of file mappings
+    struct hash_elem elem;
+
+};
+
+In `threads/thread.h`:
+
+struct thread {
+
+    // ...
+
+    // the table of file mappings
+    struct hash mmap_table;
+
+    // the number of mappings so far, used for generating mapping ids
+    int num_mmap;
+
+};
+
+---- ALGORITHMS ----
+
+>> C2: Describe how memory mapped files integrate into your virtual
+>> memory subsystem.  Explain how the page fault and eviction
+>> processes differ between swap pages and other pages.
+
+For mapped files, the pages are loaded lazily, just like the code or
+data segment. First, we `malloc()` one MMAP entry for this mapped file,
+and store some relative information, which could be the user virtual
+address, the file pointer, the number of pages to be allocated, the
+mapping ID, etc. The ID could be determined by the number of mapped
+files so far, taking advantage of the member `num_mmap` of the thread.
+For every page, we also `malloc()` one SPT entry, and store some
+relative information, which could be the user virtual address, the file
+pointer, the offset of the file, the number of bytes read, etc. Then we
+insert it to the SPT of the current process. Finally, we insert the
+MMAP entry to the MMAP table of the current process.
+
+When a page fault occurs on a mapped file, we take the fault address and
+look it up in the SPT of the current process. If we cannot find it, the
+page fault indicates an error and will exit the process. Otherwise, we
+find the SPT entry and load the page. Given the information in the SPT
+entry, we allocate a page, read the file for several bytes at some offset
+to the page, and fill the remaining part of the page to zeros. Then we
+install this page.
+
+The page fault slightly differs between swap pages and other pages. For
+swap pages, a new frame is allocated (or evicted) and installed, and then
+the data is fetched from the swap device to the page. For other pages,
+i.e. data or code segment pages, or mapped file pages, there is also a
+new frame to be allocated (or evicted) and installed, but then the data
+is fetched from a file.
+
+The eviction behavior also differs between swap pages and other pages.
+For specifying a page to evict, there is no difference between the two
+kinds of pages, since both pages are in the FT. However, when a swap page
+is evicted, the data of this page is fetched to the swap device. For a
+data or code segment page, it is treated the same as a swap page, and
+its type is changed to a swap page during its first eviction (the data
+needs to be fetched from a file during its first loading, so the type
+should be changed later). For a mapped file page, if the dirty bit is
+set, we write the data to the file. In any of the three cases, the page
+is uninstalled.
+
+>> C3: Explain how you determine whether a new file mapping overlaps
+>> another segment, either at the time the mapping is created or later.
+
+In order not to make the mapping overlaps another segment, we check
+before the mapping. Since we know the file to be mapped, we can get its
+length, and thus the number of pages and all the user virtual addresses
+to be mapped. We look up those addresses in the page table. If there
+is an address already in the page table, we conclude that this segment
+is occupied and should not be used, so we return immediately here.
+
+There won't be synchronization issues, since every process has its own
+address space.
+
+---- RATIONALE ----
+
+>> C4: Mappings created with "mmap" have similar semantics to those of
+>> data demand-paged from executables, except that "mmap" mappings are
+>> written back to their original files, not to swap.  This implies
+>> that much of their implementation can be shared.  Explain why your
+>> implementation either does or does not share much of the code for
+>> the two situations.
+
+Both of them are loaded lazily for the first time. When a page fault
+occurs, both of them allocate a page, install it and fetch the data from
+a file to this page. For these procedures, the two situations share most
+of the code, which are represented by `load_lazy()` and `load_file()`,
+respectively.
+
+When an eviction happens, the "mmap" mappings are written back to their
+original files, but the data or code segment pages are written to swap,
+with its type changed to swap at the same time.
+
+			   SURVEY QUESTIONS
+			   ================
+
+Answering these questions is optional, but it will help us improve the
+course in future quarters.  Feel free to tell us anything you
+want--these questions are just to spur your thoughts.  You may also
+choose to respond anonymously in the course evaluations at the end of
+the quarter.
+
+>> In your opinion, was this assignment, or any one of the three problems
+>> in it, too easy or too hard?  Did it take too long or too little time?
+
+>> Did you find that working on a particular part of the assignment gave
+>> you greater insight into some aspect of OS design?
+
+>> Is there some particular fact or hint we should give students in
+>> future quarters to help them solve the problems?  Conversely, did you
+>> find any of our guidance to be misleading?
+
+>> Do you have any suggestions for the TAs to more effectively assist
+>> students, either for future quarters or the remaining projects?
+
+>> Any other comments?

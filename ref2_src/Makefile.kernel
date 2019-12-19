@@ -1,0 +1,25 @@
+# -*- makefile -*-
+
+all:
+
+include Make.vars
+
+DIRS = $(sort $(addprefix build/,$(KERNEL_SUBDIRS) $(TEST_SUBDIRS) lib/user))
+
+all grade check: $(DIRS) build/Makefile
+	cd build && $(MAKE) $@
+$(DIRS):
+	mkdir -p $@
+build/Makefile: ../Makefile.build
+	cp $< $@
+
+build/%: $(DIRS) build/Makefile
+	cd build && $(MAKE) $*
+
+tar: pintos.tar
+
+pintos.tar: clean
+	cd ../../.. && rm -f $@ && tar -cf $@ pintos
+
+clean:
+	rm -rf build
