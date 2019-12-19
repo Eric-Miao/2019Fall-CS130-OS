@@ -1,0 +1,532 @@
+             +--------------------------+
+             | CS 140                   |
+             | PROJECT 2: USER PROGRAMS |
+             | DESIGN DOCUMENT          |
+             +--------------------------+
+
+---- GROUP ----
+
+>> Fill in the names and email addresses of your group members.
+
+Yifan Cao <caoyf@shanghaitech.edu.cn>
+Xiaoyu Song <songxy1@shanghaitech.edu.cn>
+
+---- PRELIMINARIES ----
+
+>> If you have any preliminary comments on your submission, notes for the
+>> TAs, or extra credit, please give them here.
+
+>> Please cite any offline or online sources you consulted while
+>> preparing your submission, other than the Pintos documentation, course
+>> text, lecture notes, and course staff.
+
+               ARGUMENT PASSING
+               ================
+
+---- DATA STRUCTURES ----
+
+>> A1: Copy here the declaration of each new or changed `struct' or
+>> `struct' member, global or static variable, `typedef', or
+>> enumeration.  Identify the purpose of each in 25 words or less.
+
+In `thread.h`, struct `thread`:
+
+struct thread {
+
+#ifdef USERPROG
+
+    // ...
+
+    struct file *file_executing;
+    // the file currently executing (open it in order to deny write)
+
+#endif
+
+}
+
+In `thread.h`, new struct `load_aux`:
+
+// when starting a subprocess, this struct is created in the parent
+// process and passed to the subprocess via `aux`
+struct load_aux {
+
+    struct semaphore sema;
+    // the semaphore for synchronizing parent and child when creating
+
+    struct child_status *cs;
+    // the child status created by the parent
+
+    struct thread *parent;
+    // the parent pointer
+
+    char *file_name;
+    // the file name string
+
+    char *cmd_line;
+    // the command line string
+
+    bool success;
+    // TRUE if the load is success by the child, used for notifying
+    // the parent
+
+};
+
+In `process.c`:
+
+static const char *delimiters_str = " \t\n\v\f\r";
+
+The string of all possible delimiters (whitespaces).
+
+---- ALGORITHMS ----
+
+>> A2: Briefly describe how you implemented argument parsing.  How do
+>> you arrange for the elements of argv[] to be in the right order?
+>> How do you avoid overflowing the stack page?
+
+We make a copy of the command line, and get the file name. We pass both
+the file name and command line to the `aux` argument via the struct
+`load_aux`. In `start_process()`, which is the context of the
+subprocess, we take the passed `aux` and extract the file name and
+command line, and pass both of them to `load()`. We modify add one more
+argument to `load()` so that it could take both strings, and we could
+then process them easier.
+
+In `load()`, we call `push_args()`, which can push the arguments onto
+the stack and move the `esp` pointer. We take a look at the details.
+First, we enter a loop and scan every character carefully. We can get
+`argc` and the sum of lengths of all `argv`s. We can then decide how
+many number of bytes we should move the `esp` pointer. We round up this
+value to a multiple of 4 in order to make the address word-aligned. Then
+we move the `esp` pointer.
+
+We define a new function `strtok_rr()`, which is slightly different from
+`strtok_r()`, except that it does not modify the string, but take a new
+argument, which is a pointer `token_len` to the integer that indicates
+the length of the token. By doing this, we do not need to add the null
+character to indicate the end of string, and thus do not need to modify
+it. By calling this function repeatedly, we get all the tokens and copy
+`token_len` number of bytes to the stack by calling `strlcpy()`. Then we
+store all the pointers `argv[...]`, `argv`, `argc` and return address
+into the stack, by dereferencing, assigning and moving the stack
+pointer.
+
+As soon as we decided the number of bytes, we check if it is greater
+than `PGSIZE`, and return false immediately if so. This avoids overflowing
+the stack page.
+
+---- RATIONALE ----
+
+>> A3: Why does Pintos implement strtok_r() but not strtok()?
+
+From the man page, the `strtok()` function uses a static buffer while
+parsing, so it's not thread safe. However, `strtok_r()` operates on the
+string itself, which avoids this issue.
+
+In addition, `strtok_r()` takes a third argument, which saves the
+pointer of the remaining string to this value. We could then use a for
+loop to iterate all of the tokens.
+
+>> A4: In Pintos, the kernel separates commands into a executable name
+>> and arguments.  In Unix-like systems, the shell does this
+>> separation.  Identify at least two advantages of the Unix approach.
+
+Since the arguments are passed by the user, reasonably speaking, this
+should be done by the interactive shell. In other cases (e.g. executing
+a program by a script), the arguments are passed separately. The kernel
+then does not need to parse them before executing, which makes it more
+efficient.
+
+In addition, an error could be handled safer in the user mode. If we do
+so in the kernel mode, it is possible that the user could pass malicious
+code, which may affect when the kernel is parsing, since the kernel has
+a higher privilege.
+
+                 SYSTEM CALLS
+                 ============
+
+---- DATA STRUCTURES ----
+
+>> B1: Copy here the declaration of each new or changed `struct' or
+>> `struct' member, global or static variable, `typedef', or
+>> enumeration.  Identify the purpose of each in 25 words or less.
+
+In `thread.h`, struct `thread`:
+
+struct thread {
+
+    // ...
+
+    bool syscall;
+    // true if the thread is currently in a syscall
+
+    struct list locks;
+    // the locks that the thread is currently holding
+
+#ifdef USERPROG
+
+    // ...
+
+    struct file_opened *files;
+    // the opened files; alloc'd dynamically
+
+    int num_files;
+    // the number of files opened
+
+    int max_num_files;
+    // the capacity of `files`
+
+    int exit_code;
+    // the exit code
+
+    struct child_status *cs;
+    // the child status; alloc'd dynamically
+
+    struct list children;
+    // list of children
+
+    struct lock children_lock;
+    // the lock which should be acquired before modifying `children`
+
+    struct file *file_executing;
+    // the file currently executing (open it in order to deny write)
+
+#endif
+
+}
+
+In `thread.h`, new struct `child_status`:
+
+// the status of a child, stored by the child
+struct child_status {
+
+    struct semaphore sema_wait;
+    // the semaphore for waiting child thread
+
+    struct list_elem elem;
+    // the list_elem that can be inserted into the list by parent
+
+    struct lock ref_lock;
+    // the lock which should be acquired before modifying the struct
+
+    tid_t tid;
+    // the thread ID (can be accessed by parent easier)
+
+    int exit_code;
+    // the exit code (can be accessed by parent easier)
+
+    bool waited;
+    // TRUE if the child has already been waited
+
+    bool parent_ref;
+    // TRUE if parent is alive (struct will be freed as soon as both
+    // refs are false)
+
+    bool child_ref;
+    // TRUE if child is alive (struct will be freed as soon as both
+    // refs are false)
+
+};
+
+In `thread.h`, new struct `file_opened`:
+
+// represents an opened file
+struct file_opened {
+
+    struct file *file;
+    // the file pointer
+
+    int fd;
+    // the file descriptor
+
+    bool closed;
+    // TRUE if the file has been closed
+
+};
+
+In `syscall.c` and (extern) `process.c`:
+
+struct lock filesys_lock;
+
+The lock which should be acquired before any file system operations.
+
+>> B2: Describe how file descriptors are associated with open files.
+>> Are file descriptors unique within the entire OS or just within a
+>> single process?
+
+We maintain a dynamically alloc'd array which stores the status of
+opened files for every thread. The array could be extended when the
+number of files opened reaches a limit.
+
+File descriptors are unique just within a single process, since they are
+not necessarily the same for different processes. For a single process,
+we store the number of files opened so far (including the closed ones),
+and plus 3 to generate a new file descriptor. This value and the file
+pointer are stored in the same struct, `file_opened`. This associates
+file descriptors with open files.
+
+---- ALGORITHMS ----
+
+>> B3: Describe your code for reading and writing user data from the
+>> kernel.
+
+For read():
+
+1. if the `buffer` with `size` is not valid range, or not writable,
+   exit with code -1
+2. if the file descriptor is STDOUT, return -1
+3. if the file descriptor is STDIN
+   a. for every character from the keyboard, try to put it onto the
+      buffer, and exit with code -1 if failed midway
+   b. return the size
+4. otherwise
+   a. try to open the file with the given file descriptor, return -1
+      if failed or the file has been closed
+   b. read the file to the buffer
+   c. return the number of bytes read
+
+For write():
+
+1. if the `buffer` with `size` is not valid range, or not readable,
+   exit with code -1
+2. if the file descriptor is STDIN, return -1
+3. if the file descriptor is STDOUT
+   a. print the first `size` characters to the terminal
+   b. return the size
+4. otherwise
+   a. try to open the file with the given file descriptor, return -1
+      if failed or the file has been closed
+   b. write the buffer to the file
+   c. return the number of bytes written
+
+>> B4: Suppose a system call causes a full page (4,096 bytes) of data
+>> to be copied from user space into the kernel.  What is the least
+>> and the greatest possible number of inspections of the page table
+>> (e.g. calls to pagedir_get_page()) that might result?  What about
+>> for a system call that only copies 2 bytes of data?  Is there room
+>> for improvement in these numbers, and how much?
+
+4,096 bytes of data spans at least 1 page, if all the bytes are in this
+page; it may also span 2 pages, if some bytes in one page and the others
+in another. Thus, the least and the greatest possible number of
+inspections are 1 and 2.
+
+If there are only 2 bytes, it is very likely that the data only spans
+1 page. It is very unlikely, but possible, that the data spans 2 pages,
+1 byte for a page. The numbers of inspections are also 1 and 2.
+
+Since the pointer is usually passed by the user, such situations could
+not be avoided, since the pointer could appear everywhere, including
+the bound of the page.
+
+>> B5: Briefly describe your implementation of the "wait" system call
+>> and how it interacts with process termination.
+
+After the parent create a child, it puts the child, which is the `elem`
+variable in the struct `child_status`, into a list. To wait a child, we
+scan every child in the list. If we cannot find a child that matches the
+TID, return -1. If we find it, we check if it has been `waited`. If so,
+return -1. Otherwise, we sema down the semaphore in `child_status`. If
+the child has already terminated, this semaphore should be up, so we
+could sema down immediately. Otherwise, the parent waits until a
+semaphore up, which is caused by the terminating child in the exiting
+handler, and then the parent is able to sema down and get unblocked.
+After that, we return the exit code of the child.
+
+>> B6: Any access to user program memory at a user-specified address
+>> can fail due to a bad pointer value.  Such accesses must cause the
+>> process to be terminated.  System calls are fraught with such
+>> accesses, e.g. a "write" system call requires reading the system
+>> call number from the user stack, then each of the call's three
+>> arguments, then an arbitrary amount of user memory, and any of
+>> these can fail at any point.  This poses a design and
+>> error-handling problem: how do you best avoid obscuring the primary
+>> function of code in a morass of error-handling?  Furthermore, when
+>> an error is detected, how do you ensure that all temporarily
+>> allocated resources (locks, buffers, etc.) are freed?  In a few
+>> paragraphs, describe the strategy or strategies you adopted for
+>> managing these issues.  Give an example.
+
+We implement a set of functions for checking the validity of pointers.
+
+static inline bool is_valid_vaddr_range(const void *vaddr, unsigned size);
+
+This function checks if the memory of `size` bytes that starts from
+`vaddr` is in the user virtual memory.
+
+static inline int get_user (const uint8_t *uaddr);
+static inline bool put_user (uint8_t *udst, uint8_t byte);
+
+These two functions are from the webpage. They are able to read from
+and write to the memory, and it could capture the error. This takes
+advantage of the processor's MMU. If we are trying to read from or write
+to an invalid pointer, or write to some read-only memory, a page fault
+happens. The two functions assume that the user address has already been
+verified to be below `PHYS_BASE`. In the page fault handler, which is
+the `page_fault()` function in `exception.c`, we check if the current
+process is running in kernel mode and in a system call. If so, we merely
+set `eax` to `0xffffffff` and copy its former value into `eip`, then
+return, instead of killing the process. This helps the two functions
+return an error code.
+
+static inline bool is_readable_vaddr_range(const void *vaddr, unsigned size);
+static inline bool is_writable_vaddr_range(void *vaddr, unsigned size);
+
+These two functions are based on the two above. They are able to check
+if a range is readable or writable. To check if readable, we try to read
+a byte every `PGSIZE` (the size of a page), including the head and tail
+bytes. Since bytes are allocated in pages, we do not need to check every
+byte. Similarly, to check if writable, we try to write a byte every
+`PGSIZE`. Since we cannot actually change the value, we can first try to
+read the byte, and then try to write the same byte.
+
+static inline int is_readable_str_vaddr_range(const void *vaddr, unsigned size);
+
+This function checks if a string starts at `vaddr` with length at most
+`size - 1` is valid. We start from the first byte and try to read every
+byte. As long as we find a byte not readable or reaches the kernel
+virtual space, the string is considered invalid. As long as we find a
+byte which is null character, which indicates the end of the string, the
+string is considered valid. If all the `size` bytes are valid, but none
+of them is a null character, the string is considered too long. A string
+that is too long does not make the system calls terminate the process,
+but return immediately.
+
+When an error is detected, we call `exit(-1)` in system calls, which is
+caused by the kernel, or in the page fault handler, which is caused by a
+user. This function calls `process_exit()`, which releases all the
+temporarily allocated resources. We iterate over the locks the current
+process is holding and release them. We also iterate over the opened
+files and close them. We check if the parent is still alive. If the
+parent is dead, the child needs to free the struct `child_status`, which
+is `malloc()`d by the parent. Otherwise, the child needs to sema up the
+semaphore, in case that the parent may waits for it. We also iterate
+over its children, if any. In particular, if a child is dead, the
+current process, as a parent, needs to free the struct `child_status`.
+
+For example, if a user passes a pointer to the `write()` system call.
+The memory is writable for the first `size / 2` bytes, but readonly for
+the rest. If the `size` is within a page, the function `is_writable_
+vaddr_range()` checks the pointers `vaddr` and `vaddr + size - 1`. The
+first pointer is definitely writable, but the second pointer is not.
+When the function runs a line of assembly code in `get_user()`, a page
+fault happens, which sets the error code `-1` in `eax` and returns. This
+is captured, and finally the function `is_writable_vaddr_range()`
+complains that a location is not writable. The system call procedure
+then calls `exit(-1)`. This function calls `process_exit()`, which
+releases all the temporarily allocated resources.
+
+---- SYNCHRONIZATION ----
+
+>> B7: The "exec" system call returns -1 if loading the new executable
+>> fails, so it cannot return before the new executable has completed
+>> loading.  How does your code ensure this?  How is the load
+>> success/failure status passed back to the thread that calls "exec"?
+
+After the parent calls `thread_create()`, which returns a TID, it may
+not use it, since the child is just created and starts its
+`start_process()` procedure. We use a semaphore. The parent initialize
+the semaphore with value 0 and passes it to the child. It then does sema
+down and passes it to the child. The child does not do sema up, until it
+finishes the load of an executable, whatever the result is. Before the
+child does sema up, it stores the result of the load to a variable which
+is shared with the parent. After the sema up, the parent could get
+signaled and know the load result. The parent returns TID if the result
+is success, otherwise it returns -1 which indicates a failure.
+
+>> B8: Consider parent process P with child process C.  How do you
+>> ensure proper synchronization and avoid race conditions when P
+>> calls wait(C) before C exits?  After C exits?  How do you ensure
+>> that all resources are freed in each case?  How about when P
+>> terminates without waiting, before C exits?  After C exits?  Are
+>> there any special cases?
+
+We use a semaphore in these procedures. If P decides to wait for C, it
+does sema down. If C exits, it does sema up. If the wait happens before
+the exit, P gets blocked, then C unblocks P when it exits. Otherwise, C
+does sema up first and exits, then P does sema down and is not blocked.
+Both situations meet our expectation. Since sema up and sema down
+disable the interrupts, they are atomic and cannot happen at the same
+time.
+
+When P creates the child, it allocates some space for the struct
+`child_status` and passes it to C. When P and C are both alive, they can
+both access the struct, so either of them cannot free it. If either of
+them exits, while the other one is still alive and could access the
+struct, the struct still may not be freed now. However, if either of
+them exits and finds that the other one has been dead, the struct can be
+freed. In this struct, we set two boolean values `parent_ref` and
+`child_ref`, indicating that P or C holds a reference of the struct.
+When P or C exits, it checks if the other one's `_ref` value is false.
+If so, the struct could be freed now. Otherwise, it could not yet. Then
+the exiting process sets its own value to false, because it is exiting
+and will no longer access this struct.
+
+There are special cases that the child may fail to load the executable,
+or the kernel may kill P or C. These situations do not matter, since
+`process_exit()` is called finally. This procedure will free all the
+other allocated resources, which are held by the process.
+
+---- RATIONALE ----
+
+>> B9: Why did you choose to implement access to user memory from the
+>> kernel in the way that you did?
+
+When validating pointers, we chose only to check if the address is in
+the user space, then try to read from or write to the memory. This takes
+advantage of the processor's MMU, which is generally faster. An invalid
+pointer will cause a page fault. In the page fault handler, we either
+return an error code (in a system call) or exit the process immediately
+(by a user). When validating a range of pointers, we validate the bytes
+every `PGSIZE` (the size of a page), since this saves time. The memory
+is allocated in pages, and we do not need to check all the bytes in a
+page.
+
+>> B10: What advantages or disadvantages can you see to your design
+>> for file descriptors?
+
+We allocate some space on the heap for every thread, which is used for
+storing the structs `file_opened`, which indicates opened files. The
+space could be regarded as an array. We record the number of files
+opened so far, no matter if some files are closed. The file descriptor
+corresponds to this value, and it is incremented by 1 when a file is
+opened. The file with descriptor `fd` is at the index `fd - 3`. An
+advantage is that we could access a file with a given descriptor in O(1)
+time. When we are reading from, writing to or closing a file, this is a
+good performance.
+
+A disadvantage is that the memory has a fixed length, and reallocation
+takes time. We need to allocate a longer space (2x in our
+implementation), copy the old data into the new one, and free the old
+space. In addition, closed files cannot be easily erased, since it takes
+time to open a new file and store the status at that index. This means
+it is possible that only a few files opened, but their descriptors are
+large.
+
+>> B11: The default tid_t to pid_t mapping is the identity mapping.
+>> If you changed it, what advantages are there to your approach?
+
+We didn't change the mapping.
+
+               SURVEY QUESTIONS
+               ================
+
+Answering these questions is optional, but it will help us improve the
+course in future quarters.  Feel free to tell us anything you
+want--these questions are just to spur your thoughts.  You may also
+choose to respond anonymously in the course evaluations at the end of
+the quarter.
+
+>> In your opinion, was this assignment, or any one of the three problems
+>> in it, too easy or too hard?  Did it take too long or too little time?
+
+>> Did you find that working on a particular part of the assignment gave
+>> you greater insight into some aspect of OS design?
+
+>> Is there some particular fact or hint we should give students in
+>> future quarters to help them solve the problems?  Conversely, did you
+>> find any of our guidance to be misleading?
+
+>> Do you have any suggestions for the TAs to more effectively assist
+>> students, either for future quarters or the remaining projects?
+
+>> Any other comments?
