@@ -22,6 +22,7 @@ filesys_init (bool format)
     PANIC ("No file system device found, can't initialize file system.");
 
   inode_init ();
+  cache_init();
   free_map_init ();
 
   if (format) 

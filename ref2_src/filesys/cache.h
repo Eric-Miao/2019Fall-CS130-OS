@@ -14,11 +14,3 @@ void cache_read_ahead_put(block_sector_t sector);
 
 #endif /* filesys/cache.h */
 
-
-
-init 
-flush 
-read 
-write 
-evict 
-find 
