@@ -4,6 +4,8 @@
     "malloc.h": "c",
     "synch.h": "c",
     "thread.h": "c",
-    "inode.h": "c"
+    "inode.h": "c",
+    "string_view": "c",
+    "typeinfo": "c"
   }
 }

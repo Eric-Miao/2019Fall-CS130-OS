@@ -51,17 +51,56 @@ filesys_create (const char *name, off_t initial_size)
 {
   block_sector_t inode_sector = 0;
   struct dir *dir;
+  struct inode *inode;
   char* filename;
+  bool success;
 
   int open_status = parse_path(name, &dir, &filename);
-
+  /* Only create files no dir */
   if (open_status != 1)
     return false;
 
-  bool success = (dir != NULL
-                  && free_map_allocate (1, &inode_sector)
-                  && inode_create (inode_sector, initial_size, false)
-                  && dir_add (dir, name, inode_sector, false));
+  success = (dir != NULL && free_map_allocate (1, &inode_sector));
+
+  if (success)
+  {
+    inode = inode_create(inode_sector, initial_size, false);
+
+    if (inode_write_at(inode, "", 1, initial_size - 1) != 1)
+    {
+      success = false;
+      goto done;
+    }
+
+    if (inode != NULL)
+    {
+      if (dir_add(dir, name, inode_sector))
+      {
+        success = true;
+        goto done;
+      }
+      else
+      {
+        success=false;
+        goto done;
+      }
+    }
+    else
+    {
+      success = false;
+      goto done;
+    }
+    
+  }
+
+done:
+  if (inode != NULL)
+  {  
+    inode_close(inode);
+    if (!success)
+      inode_remove(inode); 
+  }
+
   if (!success && inode_sector != 0) 
     free_map_release (inode_sector, 1);
 
@@ -90,7 +129,11 @@ filesys_open (const char *name)
     return file_open(inode_open(ROOT_DIR_SECTOR));
 
   if (dir != NULL)
-    dir_lookup (dir, name, &inode);
+    if(!dir_lookup (dir, name, &inode))
+    {
+      dir_close(dir);
+      return NULL;
+    }
   dir_close (dir);
 
   free(filename);
@@ -110,7 +153,7 @@ filesys_remove (const char *name)
   bool success;
 
   /* Root dir cannot be removed and if fail parsing */
-  if (result == -1 || result == 2)
+  if (result == -1 || result == 2 || dir == NULL)
     return false;
 
   /* In case there are . and .. */
@@ -218,6 +261,11 @@ parse_path(const char *pathname, struct dir **dir, char **filename)
   size_t len_filename = strlen(ptr_last);
   /* For bebug, check the len_filename > 0. */
   ASSERT(len_filename > 0);
+  if (len_filename > NAME_MAX)
+  {    
+    ret = -1;
+    goto done;
+  }
 
   cwd = if_absolute ? dir_open_root() : dir_open_cwd();
   for (token = strtok_r(path_buffer, "/", &save_ptr);
