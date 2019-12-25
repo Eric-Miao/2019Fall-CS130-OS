@@ -30,6 +30,8 @@
                            NUM_BLOCK_PTR_PER_INODE * NUM_INDIRECT_SECTOR +                                   \
                            NUM_BLOCK_PTR_PER_INODE * NUM_BLOCK_PTR_PER_INODE * NUM_DOUBLE_INDIRECT_SECTOR) * \
                           BLOCK_SECTOR_SIZE)
+static size_t bytes_to_sectors(off_t);
+static void remove_inode (struct inode*);
 /* On-disk inode.
    Must be exactly BLOCK_SECTOR_SIZE bytes long. */
 struct inode_disk
@@ -62,7 +64,7 @@ struct inode
 
   /* Returns the number of sectors to allocate for an inode SIZE
    bytes long. */
-  static inline size_t
+  static size_t
   bytes_to_sectors(off_t size)
   {
     return DIV_ROUND_UP(size, BLOCK_SECTOR_SIZE);
@@ -72,15 +74,15 @@ struct inode
    within INODE.
    Returns -1 if INODE does not contain data for a byte at offset
    POS. */
-  static block_sector_t
-  byte_to_sector(const struct inode *inode, off_t pos)
-  {
-    ASSERT(inode != NULL);
-    if (pos < inode->data.length)
-      return inode->data.start + pos / BLOCK_SECTOR_SIZE;
-    else
-      return -1;
-}
+//   static block_sector_t
+//   byte_to_sector(const struct inode *inode, off_t pos)
+//   {
+//     ASSERT(inode != NULL);
+//     if (pos < inode->data.length)
+//       return inode->data.start + pos / BLOCK_SECTOR_SIZE;
+//     else
+//       return -1;
+// }
 
 /* List of open inodes, so that opening a single inode twice
    returns the same `struct inode'. */
@@ -138,10 +140,10 @@ inode_is_dir(struct inode *inode)
 {
   if (inode == NULL)
     return false;
-  struct cache_line ce = cache_allocate(inode->sector, false);
-  struct inode_disk *disk_inode = cache_get_data(ce);
+  struct cache_line *cl = cache_allocate(inode->sector, false);
+  struct inode_disk *disk_inode = cache_get_data(cl);
   bool type = disk_inode->is_dir;
-  cache_wake(ce, false);
+  cache_wake(cl, false);
   return (type);
 }
 /* Reads an inode from SECTOR
@@ -238,8 +240,8 @@ inode_close (struct inode *inode)
 static void
 remove_inode (struct inode *inode)
 {
-  struct cache_line *ce = cache_allocate (inode->sector, true);
-  struct inode_disk *disk_inode = cache_get_data(ce);
+  struct cache_line *cl = cache_allocate (inode->sector, true);
+  struct inode_disk *disk_inode = cache_get_data(cl);
 
   for (int i = 0; i < NUM_TOTAL_SECTOR_IN_ARRAY; i++)
   {
@@ -314,7 +316,7 @@ remove_inode (struct inode *inode)
     }
   }
 
-  cache_wake(ce, true);
+  cache_wake(cl, true);
   cache_free(inode->sector);
   free_map_release(inode->sector, 1);
   return;
@@ -329,7 +331,7 @@ inode_remove (struct inode *inode)
 }
 
 static bool
-read_block (struct inode* inode, off_t offset, bool is_write, struct cache_line **ce_result)
+read_block (struct inode* inode, off_t offset, bool is_write, struct cache_line **cl_result)
 {
   /* Check basic properties. */
   ASSERT(inode != NULL);
@@ -368,15 +370,15 @@ read_block (struct inode* inode, off_t offset, bool is_write, struct cache_line 
 
   int this_level = 0;
   block_sector_t sector = inode->sector;
-  struct cache_line *ce;
+  struct cache_line *cl;
   uint32_t *data;
   block_sector_t *next_sector;
   struct cache_line *next_ce;
 
   while(true)
   {
-    ce = cache_allocate(sector, false);
-    data = cache_get_data (ce);
+    cl = cache_allocate(sector, false);
+    data = cache_get_data (cl);
     next_sector = &data[sector_offs[this_level]];
 
     /* Check if we have the 'next level sectors.' */
@@ -394,52 +396,52 @@ read_block (struct inode* inode, off_t offset, bool is_write, struct cache_line 
             add_to_prepare (readahead_sector);
         }
         
-        cache_wake(ce, false);
-        *ce_result = cache_allocate (*next_sector, is_write);
+        cache_wake(cl, false);
+        *cl_result = cache_allocate (*next_sector, is_write);
         return true;
       }
       sector = *next_sector;
-      cache_wake(ce, false);
+      cache_wake(cl, false);
       this_level++;
       continue;
     }
-    cache_wake(ce, false);
+    cache_wake(cl, false);
 
     if(!is_write)
     {
-      *ce_result = NULL;
+      *cl_result = NULL;
       return true;
     }
 
     /* Need to allocate a new sector. */
-    ce = cache_allocate (sector, true);
-    data = cache_get_data (ce);
+    cl = cache_allocate (sector, true);
+    data = cache_get_data (cl);
 
     next_sector = &data[sector_offs[this_level]];
 
     if(*next_sector != 0)
     {
-      cache_wake (ce, true);
+      cache_wake (cl, true);
       continue;
     }
 
     /* Allocate the sector in disk. */
     if (!free_map_allocate(1,next_sector))
     {
-      cache_wake(ce, true);
-      *ce_result = NULL;
+      cache_wake(cl, true);
+      *cl_result = NULL;
       return false;
     }
 
-    cache_set_dirty(ce);
+    cache_set_dirty(cl);
      next_ce = cache_allocate ( *next_sector, true);
      cache_get_zero(next_ce);
 
-     cache_wake(ce, true);
+     cache_wake(cl, true);
 
      if (this_level == level)
      {
-       *ce_result = next_ce;
+       *cl_result = next_ce;
        return true;
      }
 
@@ -493,17 +495,17 @@ inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset)
       //     memcpy (buffer + bytes_read, bounce + sector_ofs, chunk_size);
       //   }
 
-        struct cache_line *ce;
-        if (!read_block(inode, offset, false, &ce))
+        struct cache_line *cl;
+        if (!read_block(inode, offset, false, &cl))
           break;
 
-        if (ce == NULL)
+        if (cl == NULL)
           memset(buffer + bytes_read, 0, chunk_size);
         else
         {
-          uint8_t *data = cache_get_data(ce);
+          uint8_t *data = cache_get_data(cl);
           memcpy(buffer + bytes_read, data + sector_ofs, chunk_size);
-          cache_wake(ce, false);
+          cache_wake(cl, false);
         }
 
         /* Advance. */
@@ -556,14 +558,14 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
     if (chunk_size <= 0)
       break;
 
-    struct cache_line *ce;
-    if (!read_block(inode, offset, true, &ce))
+    struct cache_line *cl;
+    if (!read_block(inode, offset, true, &cl))
       break;
 
-    uint8_t *data = cache_get_data(ce);
+    uint8_t *data = cache_get_data(cl);
     memcpy(data + sector_ofs, buffer + bytes_written, chunk_size);
-    cache_set_dirty(ce);
-    cache_wake(ce, true);
+    cache_set_dirty(cl);
+    cache_wake(cl, true);
 
     /* Advance. */
     size -= chunk_size;
@@ -622,11 +624,11 @@ inode_allow_write (struct inode *inode)
 off_t
 inode_length (const struct inode *inode)
 {
-  struct cache_line *ce = cache_allocate(inode->sector, false);
-  struct inode_disk *disk_inode = cache_get_data(ce);
+  struct cache_line *cl = cache_allocate(inode->sector, false);
+  struct inode_disk *disk_inode = cache_get_data(cl);
 
   off_t length = disk_inode->length;
-  cache_wake(ce, false);
+  cache_wake(cl, false);
   return length;
 }
 

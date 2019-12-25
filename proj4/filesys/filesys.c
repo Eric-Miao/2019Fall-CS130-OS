@@ -191,7 +191,8 @@ do_format (void)
   Store the parsed name into filename.
   Store the opeded inode of dir in dir if the pathname is a dir.
   return value -1:fail; 0:file; 1:dir; 2:root dir */
-int parse_path(const char *pathname, struct dir **dir, char **filename)
+int 
+parse_path(const char *pathname, struct dir **dir, char **filename)
 {
   int ret;
   char *path_buffer;
