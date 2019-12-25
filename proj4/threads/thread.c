@@ -11,6 +11,7 @@
 #include "threads/switch.h"
 #include "threads/synch.h"
 #include "threads/vaddr.h"
+#include "filesys/inode.h"
 #ifdef USERPROG
 #include "userprog/process.h"
 #endif
@@ -36,6 +37,7 @@ static struct thread *initial_thread;
 /* Lock used by allocate_tid(). */
 static struct lock tid_lock;
 
+static bool booted = false;
 /* Stack frame for kernel_thread(). */
 struct kernel_thread_frame
 {
@@ -249,11 +251,11 @@ tid_t thread_create(const char *name, int priority,
   /* Initialize thread. */
   init_thread(t, name, priority);
   tid = t->tid = allocate_tid();
-  struct last_words* lw = malloc(sizeof(*lw));
+  struct last_words *lw = malloc(sizeof(*lw));
   lw->tid = tid;
   lw->code = t->exitcode;
   lw->running = 0;
-  list_push_back (&running_thread()->children, &lw->ele);
+  list_push_back(&running_thread()->children, &lw->ele);
 
   old_level = intr_disable();
   /* Stack frame for kernel_thread(). */
@@ -671,6 +673,10 @@ init_thread(struct thread *t, const char *name, int priority)
   list_insert_ordered(&all_list, &t->allelem, (list_less_func *)&is_priority_less, NULL);
   intr_set_level(old_level);*/
   list_push_back(&all_list, &t->allelem);
+  if (booted)
+  {
+    t->directory = dir_open_current();
+  }
 }
 
 /* Allocates a SIZE-byte frame at the top of thread T's stack and
@@ -684,6 +690,14 @@ alloc_frame(struct thread *t, size_t size)
 
   t->stack -= size;
   return t->stack;
+}
+
+void thread_directory_init()
+{
+#ifdef USERPROG
+  initial_thread->directory = dir_open_root();
+  booted = true;
+#endif
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should

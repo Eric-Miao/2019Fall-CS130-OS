@@ -17,7 +17,6 @@
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
-
 #define MAX 300
 
 static thread_func start_process NO_RETURN;

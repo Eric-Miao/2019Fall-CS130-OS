@@ -22,6 +22,10 @@ int write (int fd, const void *buffer, unsigned size);
 void seek(int fd, unsigned position);
 unsigned tell(int fd);
 void close(int fd);
-
+bool chdir(const char *path);
+bool mkdir(const char *path);
 void is_buffer_valid(void *buffer, unsigned size);
+bool readdir(int fd, char *name);
+bool isdir(int fd);
+int inumber(int fd);
 #endif /* userprog/syscall.h */

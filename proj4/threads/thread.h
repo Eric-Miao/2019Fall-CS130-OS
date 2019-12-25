@@ -6,6 +6,7 @@
 #include <stdint.h>
 #include "synch.h"
 #include "filesys/file.h"
+#include "filesys/directory.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -124,6 +125,7 @@ struct thread
     int priority;                       /* Priority. */
     int original_priority;              /* A parmater that record the thread's priority before any donation*/
     int nice;
+    struct dir *directory;              /*store the current working directory of thread*/
     struct list_elem allelem;           /* List element for all threads list. */
     struct list locks;                  /*locks that thread possess*/
     struct lock *stuck_lock;            /*stuck lock that thread needs*/
@@ -168,6 +170,7 @@ extern bool thread_mlfqs;
 
 void thread_init (void);
 void thread_start (void);
+void thread_directory_init(void);
 
 void thread_tick (void);
 void thread_print_stats (void);

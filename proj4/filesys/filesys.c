@@ -1,4 +1,3 @@
-#include "filesys/filesys.h"
 #include <debug.h>
 #include <stdio.h>
 #include <string.h>
@@ -7,6 +6,7 @@
 #include "filesys/inode.h"
 #include "filesys/directory.h"
 #include "filesys/cache.h"
+#include "filesys/filesys.h"
 #include "threads/malloc.h"
 #include "threads/thread.h"
 /* Partition that contains the file system. */
@@ -74,7 +74,7 @@ filesys_create (const char *name, off_t initial_size)
 
     if (inode != NULL)
     {
-      if (dir_add(dir, name, inode_sector))
+      if (dir_add(dir, name, inode_sector,false))
       {
         success = true;
         goto done;
@@ -164,7 +164,7 @@ filesys_remove (const char *name)
     return false;
   }
 
-  bool success = dir != NULL && dir_remove(dir, name);
+  success = dir != NULL && dir_remove(dir, name);
   dir_close(dir);
   free(filename);
 
@@ -191,8 +191,7 @@ do_format (void)
   Store the parsed name into filename.
   Store the opeded inode of dir in dir if the pathname is a dir.
   return value -1:fail; 0:file; 1:dir; 2:root dir */
-int 
-parse_path(const char *pathname, struct dir **dir, char **filename)
+int parse_path(const char *pathname, struct dir **dir, char **filename)
 {
   int ret;
   char *path_buffer;
@@ -227,7 +226,7 @@ parse_path(const char *pathname, struct dir **dir, char **filename)
   /* dir_cwd_removed check if current cwd exists.
     which is only a problem with relative path because 
     it depends on the relative path to locate the file.*/
-  if (!if_absolute && dir_cwd_removed())
+  if (!if_absolute && inode_removed(thread_current()->directory->inode))
   {
     free(path_buffer);
     ret = -1;
@@ -267,7 +266,7 @@ parse_path(const char *pathname, struct dir **dir, char **filename)
     goto done;
   }
 
-  cwd = if_absolute ? dir_open_root() : dir_open_cwd();
+  cwd = if_absolute ? dir_open_root() : dir_open_current();
   for (token = strtok_r(path_buffer, "/", &save_ptr);
        token != ptr_last && token != NULL;
        token = strtok_r(NULL, "/", &save_ptr))

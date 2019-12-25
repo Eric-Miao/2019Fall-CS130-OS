@@ -12,6 +12,9 @@
 #include "userprog/process.h"
 #include "devices/input.h"
 #include "threads/malloc.h"
+#include "filesys/directory.h"
+#include "filesys/free-map.h"
+#include "filesys/inode.h"
 #define ARGS 3
 
 static void syscall_handler(struct intr_frame *);
@@ -261,8 +264,48 @@ syscall_handler(struct intr_frame *f UNUSED)
     /*call close()*/
     close(args[0]);
   }
+  /*if syscall is change directory*/
+  if (*(int *)f->esp == SYS_CHDIR)
+  {
+    /*get path name*/
+    get_args(f, &args[0], 1);
+    /*call chdir()*/
+    f->eax = chdir((const char *)args[0]);
+  }
+  /*if syscall is make directory*/
+  if (*(int *)f->esp == SYS_MKDIR)
+  {
+    /*get path name*/
+    get_args(f, &args[0], 1);
+    /*call chdir()*/
+    f->eax = mkdir((const char *)args[0]);
+  }
+  /*if syscall is read directory*/
+  if (*(int *)f->esp == SYS_READDIR)
+  {
+    /*get file discriptor and path name*/
+    get_args(f, &args[0], 2);
+    /*call readdir()*/
+    f->eax = readdir(args[0], (char *)args[1]);
+  }
+  /*if syscall is is_directory*/
+  if (*(int *)f->esp == SYS_ISDIR)
+  {
+    /*get file discriptor*/
+    get_args(f, &args[0], 1);
+    /*call isdir()*/
+    f->eax = isdir(args[0]);
+  }
+  /*if syscall is inode number*/
+  if (*(int *)f->esp == SYS_INUMBER)
+  {
+    /*get file discriptor*/
+    get_args(f, &args[0], 1);
+    /*call isdir()*/
+    f->eax = inumber(args[0]);
+  }
   /*if it is an invalid system call*/
-  if (*(int *)f->esp != SYS_HALT && *(int *)f->esp != SYS_EXIT && *(int *)f->esp != SYS_EXEC && *(int *)f->esp != SYS_WRITE && *(int *)f->esp != SYS_READ && *(int *)f->esp != SYS_OPEN && *(int *)f->esp != SYS_CLOSE && *(int *)f->esp != SYS_WAIT && *(int *)f->esp != SYS_CREATE && *(int *)f->esp != SYS_REMOVE && *(int *)f->esp != SYS_FILESIZE && *(int *)f->esp != SYS_SEEK && *(int *)f->esp != SYS_TELL)
+  if (*(int *)f->esp != SYS_HALT && *(int *)f->esp != SYS_EXIT && *(int *)f->esp != SYS_EXEC && *(int *)f->esp != SYS_WRITE && *(int *)f->esp != SYS_READ && *(int *)f->esp != SYS_OPEN && *(int *)f->esp != SYS_CLOSE && *(int *)f->esp != SYS_WAIT && *(int *)f->esp != SYS_CREATE && *(int *)f->esp != SYS_REMOVE && *(int *)f->esp != SYS_FILESIZE && *(int *)f->esp != SYS_SEEK && *(int *)f->esp != SYS_TELL && *(int *)f->esp != SYS_CHDIR && *(int *)f->esp != SYS_MKDIR && *(int *)f->esp != SYS_READDIR && *(int *)f->esp != SYS_ISDIR && *(int *)f->esp != SYS_INUMBER)
   {
     /*terminate the program and free its resources */
     exit(-1);
@@ -323,6 +366,10 @@ int write(int fd, const void *buffer, unsigned size)
     /*search the fd and write*/
     if (thread_f->f_des == fd)
     {
+      if (inode_is_dir(file_get_inode(thread_f->f_addr_ptr)))
+      {
+        exit(-1);
+      }
       int bytes_written = (int)file_write(thread_f->f_addr_ptr, buffer, size);
       /*release the lock after write*/
       lock_release(&lock_f);
@@ -585,4 +632,188 @@ void close(int fd)
   /*can't find fd file*/
   lock_release(&lock_f);
   return;
+}
+/*changes the current working directory of the process to dir*/
+bool chdir(const char *path)
+{
+  struct thread *curr = thread_current();
+  struct dir *dir;
+  char *file;
+  /*parse the path get the file name and directory name*/
+  int success = parse_path(path, &dir, &file);
+  /*if we can not parse the path*/
+  if (success == -1)
+  {
+    return false;
+  }
+  /*if we get the root directory*/
+  else if (success == 2)
+  {
+    /*change root directory*/
+    dir_close(curr->directory);
+    curr->directory = dir_open_root();
+    return true;
+  }
+  /*if we get a file or directory*/
+  struct inode *inode = NULL;
+  /*if we can't find any file with give name in given directory or the given
+   file name with invalid inode*/
+  if (!dir_lookup(dir, file, &inode) || !inode_is_dir(inode))
+  {
+    /*close the directory and return false*/
+    dir_close(dir);
+    free(file);
+    return false;
+  }
+  dir_close(dir);
+  free(file);
+  /*change directory of current thread*/
+  dir_close(curr->directory);
+  curr->directory = dir_open(inode);
+  return true;
+}
+
+bool mkdir(const char *path)
+{
+  struct dir *dir;
+  char *file;
+  int success_parse = parse_path(path, &dir, &file);
+  /*if directory is already exist or invalid then return false*/
+  if (success_parse == -1 || success_parse == 2)
+  {
+    return false;
+  }
+
+  block_sector_t sector = 0;
+  /*create the dirctory*/
+  bool success = free_map_allocate(1, &sector) && dir_create(sector, 16) && dir_add(dir, file, sector, true);
+  /*if fail to create but success allocate the sector then free the sector allocated*/
+  if (!success && sector != 0)
+  {
+    free_map_release(sector, 1);
+  }
+  if (success)
+  {
+    /*new dirctory with given sector*/
+    struct dir *newdir = dir_open(inode_open(sector));
+    /*add its pwd and cwd into dir table*/
+    dir_add(newdir, ".", sector, true);
+    dir_add(newdir, "..", inode_get_inumber(dir_get_inode(dir)), true);
+    dir_close(newdir);
+  }
+  /*close the parse dir and free the file pointer*/
+  dir_close(dir);
+  free(file);
+  return success;
+}
+/*reads a directory entry from file descriptor fd*/
+bool readdir(int fd, char *name)
+{
+  struct list_elem *temp;
+  struct file *file = NULL;
+  struct thread *curr = thread_current();
+  /*if there is no file to seek*/
+  if (list_empty(&curr->file_des))
+  {
+    lock_release(&lock_f);
+    return false;
+  }
+  temp = list_front(&curr->file_des);
+  /*search the file to fd list in current thread*/
+  while (temp != NULL)
+  {
+    struct file_to_fd *link = list_entry(temp, struct file_to_fd, f_list);
+    /*if find the fd file*/
+    if (link->f_des == fd)
+    {
+      /*seek the file for posirion*/
+      file = link->f_addr_ptr;
+    }
+    temp = temp->next;
+  }
+  /*can't find fd file*/
+  if (file == NULL)
+  {
+    return false;
+  }
+  /*get the inode of the fd file*/
+  struct inode *inode = file_get_inode(file);
+  /*return false if it is not a dir*/
+  if (!inode_is_dir(inode))
+  {
+    return false;
+  }
+  off_t position = file_tell(file);
+  struct dir *dir = dir_open(inode);
+  dir->pos = position;
+  /*stores the null-terminated file name in name*/
+  bool success = dir_readdir(dir, name);
+  file_seek(file, dir->pos);
+  free(dir);
+  return success;
+}
+
+/*returns true if fd represents a directory*/
+bool isdir(int fd)
+{
+  lock_acquire(&lock_f);
+  struct list_elem *temp;
+  struct thread *curr = thread_current();
+  /*if there is no file to tell*/
+  if (list_empty(&curr->file_des))
+  {
+    lock_release(&lock_f);
+    return false;
+  }
+  temp = list_front(&curr->file_des);
+  /*search the file to fd list in current thread*/
+  while (temp != NULL)
+  {
+    struct file_to_fd *link = list_entry(temp, struct file_to_fd, f_list);
+    /*if find the fd file*/
+    if (link->f_des == fd)
+    {
+      /*save is dir*/
+      bool is_dir = inode_is_dir(file_get_inode(link->f_addr_ptr));
+      /*release the lock and return is dir*/
+      lock_release(&lock_f);
+      return is_dir;
+    }
+    temp = temp->next;
+  }
+  /*can't find fd file*/
+  lock_release(&lock_f);
+  return false;
+}
+/*returns the inode number of the inode associated with fd*/
+int inumber(int fd)
+{
+  lock_acquire(&lock_f);
+  struct list_elem *temp;
+  struct thread *curr = thread_current();
+  /*if there is no file to tell*/
+  if (list_empty(&curr->file_des))
+  {
+    lock_release(&lock_f);
+    return -1;
+  }
+  temp = list_front(&curr->file_des);
+  /*search the file to fd list in current thread*/
+  while (temp != NULL)
+  {
+    struct file_to_fd *link = list_entry(temp, struct file_to_fd, f_list);
+    /*if find the fd file*/
+    if (link->f_des == fd)
+    {
+      /*save inode number*/
+      int inode_number = inode_get_inumber(file_get_inode(link->f_addr_ptr));
+      /*release the lock and return inode number*/
+      lock_release(&lock_f);
+      return inode_number;
+    }
+    temp = temp->next;
+  }
+  /*can't find fd file*/
+  lock_release(&lock_f);
+  return -1;
 }
