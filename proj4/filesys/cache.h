@@ -3,10 +3,7 @@
 
 #include "devices/block.h"
 #include "threads/synch.h"
-#include "threads/thread.h"
-#include "threads/malloc.h"
-#include "devices/timer.h"
-#include "filesys/filesys.h"
+
 
 struct cache_line
 {

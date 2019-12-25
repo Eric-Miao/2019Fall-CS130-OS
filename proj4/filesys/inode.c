@@ -3,7 +3,10 @@
 #include <debug.h>
 #include <round.h>
 #include <string.h>
-
+#include "filesys/cache.h"
+#include "filesys/filesys.h"
+#include "filesys/free-map.h"
+#include "threads/malloc.h"
 static size_t bytes_to_sectors(off_t);
 static void remove_inode (struct inode*);
 

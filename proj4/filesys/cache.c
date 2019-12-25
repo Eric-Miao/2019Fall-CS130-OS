@@ -1,6 +1,10 @@
 #include <string.h>
 #include <stdbool.h>
 #include <debug.h>
+#include "threads/thread.h"
+#include "threads/malloc.h"
+#include "devices/timer.h"
+#include "filesys/filesys.h"
 #include "filesys/cache.h"
 #define MAX_CACHE 64
 
@@ -117,7 +121,7 @@ struct cache_line *cache_allocate(block_sector_t sector, bool exclusive)
         ASSERT(lock_held_by_current_thread(&line->cache_line_lock));
         if (exclusive)
         {
-            ASSERT(line->indicator);
+            ASSERT(line->indicator == 0);
             line->indicator = -1;
         }
         else
