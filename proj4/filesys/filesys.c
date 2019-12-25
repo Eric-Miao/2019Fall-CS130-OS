@@ -122,7 +122,7 @@ filesys_open (const char *name)
   char *filename;
   struct inode *inode = NULL;
 
-  int result = parse_pathname(name, &dir, &filename);
+  int result = parse_path(name, &dir, &filename);
   if (result == -1)
     return false;
   if (result == 2)
@@ -149,7 +149,7 @@ filesys_remove (const char *name)
 {
   struct dir *dir;
   char *filename;
-  int result = parse_pathname(name, &dir, &filename);
+  int result = parse_path(name, &dir, &filename);
   bool success;
 
   /* Root dir cannot be removed and if fail parsing */
