@@ -3,7 +3,7 @@
 #include <string.h>
 #include "filesys/file.h"
 #include "filesys/free-map.h"
-#include "filesys/inode.h"
+#include "filesys/inode.c"
 #include "filesys/directory.h"
 #include "filesys/cache.h"
 #include "filesys/filesys.h"
@@ -227,7 +227,7 @@ parse_path(const char *pathname, struct dir **dir, char **filename)
   /* dir_cwd_removed check if current cwd exists.
     which is only a problem with relative path because 
     it depends on the relative path to locate the file.*/
-  if (!if_absolute && inode_removed(thread_current()->directory->inode))
+  if (!if_absolute && (thread_current()->directory->inode->removed))
   {
     free(path_buffer);
     ret = -1;
