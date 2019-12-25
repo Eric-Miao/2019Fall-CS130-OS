@@ -12,7 +12,13 @@
    given SECTOR.  Returns true if successful, false on failure. */
 bool dir_create(block_sector_t sector, size_t entry_cnt)
 {
-  return inode_create(sector, (off_t)(entry_cnt * sizeof(struct dir_entry)), true);
+  bool success = false;
+  struct inode *inode = inode_create(sector, (off_t)(entry_cnt * sizeof(struct dir_entry)), true);
+  if (inode != NULL)
+  {
+    return inode_write_at(inode,'/0', (off_t)(entry_cnt * sizeof(struct dir_entry)), 0);
+  }
+  return false;
 }
 
 /* Opens and returns the directory for the given INODE, of which

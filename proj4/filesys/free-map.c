@@ -65,8 +65,21 @@ void free_map_close(void)
 void free_map_create(void)
 {
   /* Create inode. */
-  if (!inode_create (FREE_MAP_SECTOR, (off_t) bitmap_file_size (free_map), false))
+  bool success;
+  struct inode *inode = inode_create(FREE_MAP_SECTOR, (off_t)bitmap_file_size(free_map), false);
+  if (inode != NULL)
+  {
+    ASSERT (bitmap_file_size(free_map) );
+    success = inode_write_at(inode, "\0", 1, bitmap_file_size(free_map) - 1) == 1;
+  }
+  else
+  {
+    success = false;
+  }
+  if (!success)
+  {
     PANIC("free map creation failed");
+  }
   /* Write bitmap to file. */
   free_map_file = file_open(inode_open(FREE_MAP_SECTOR));
   if (free_map_file == NULL)
