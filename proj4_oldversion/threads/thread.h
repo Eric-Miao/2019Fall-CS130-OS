@@ -130,6 +130,7 @@ struct thread
     /*For dealing with busy waiting problem we add a guard as sleeping time signal*/
     int64_t guard;
     fixed_t recent_cpu;
+    struct dir *directory;              /*the current working directory of thread*/
     /* Shared between thread.c and synch.c. */
     struct list_elem elem;              /* List element. */
 

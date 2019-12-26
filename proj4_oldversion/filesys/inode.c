@@ -1,8 +1,10 @@
+#include <stdio.h>
 #include "filesys/inode.h"
 #include <list.h>
 #include <debug.h>
 #include <round.h>
 #include <string.h>
+#include "filesys/cache.h"
 #include "filesys/filesys.h"
 #include "filesys/free-map.h"
 #include "threads/malloc.h"
@@ -71,16 +73,16 @@ struct inode
    within INODE.
    Returns -1 if INODE does not contain data for a byte at offset
    POS. */
-//   static block_sector_t
-//   byte_to_sector(const struct inode *inode, off_t pos)
-//   {
-//     ASSERT(inode != NULL);
-//     if (pos < inode->data.length)
-//       return inode->data.start + pos / BLOCK_SECTOR_SIZE;
-//     else
-//       return -1;
-// }
-
+  /*static block_sector_t
+  byte_to_sector(const struct inode *inode, off_t pos)
+  {
+    ASSERT(inode != NULL);
+    if (pos < inode->data.length)
+      return inode->data.start + pos / BLOCK_SECTOR_SIZE;
+    else
+      return -1;
+}*/
+static void remove_inode (struct inode *inode);
 /* List of open inodes, so that opening a single inode twice
    returns the same `struct inode'. */
 static struct list open_inodes;
@@ -100,8 +102,7 @@ inode_init (void)
    device.
    Returns true if successful.
    Returns false if memory or disk allocation fails. */
-bool 
-inode_create(block_sector_t sector, off_t length, bool is_dir)
+struct inode *inode_create(block_sector_t sector, off_t length, bool is_dir)
 {
   struct inode_disk *disk_inode = NULL;
 
@@ -546,7 +547,7 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
     int sector_ofs = offset % BLOCK_SECTOR_SIZE;
 
     /* Bytes left in inode, bytes left in sector, lesser of the two. */
-    off_t inode_left = inode_length(inode) - offset;
+    off_t inode_left = (off_t)INODE_MAX_LENGTH - offset;
     int sector_left = BLOCK_SECTOR_SIZE - sector_ofs;
     int min_left = inode_left < sector_left ? inode_left : sector_left;
 
@@ -637,4 +638,13 @@ void inode_acquire_lock(struct inode *inode)
 void inode_release_lock(struct inode *inode)
 {
   lock_release(&inode->inode_lock);
+}
+
+int inode_open_cnt(struct inode *inode)
+{
+  int value;
+  lock_acquire(&lock_open_inodes);
+  value = inode->open_cnt;
+  lock_release(&lock_open_inodes);
+  return value;
 }

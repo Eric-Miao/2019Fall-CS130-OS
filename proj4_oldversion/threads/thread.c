@@ -667,6 +667,7 @@ init_thread(struct thread *t, const char *name, int priority)
   sema_init(&t->waiting_parent, 0);
   /*initiate exit status with unexpect situation*/
   t->exitcode = -1;
+  t->directory = NULL;
   /*old_level = intr_disable();
   list_insert_ordered(&all_list, &t->allelem, (list_less_func *)&is_priority_less, NULL);
   intr_set_level(old_level);*/

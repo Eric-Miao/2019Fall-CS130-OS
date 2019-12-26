@@ -2,19 +2,21 @@
 #include <debug.h>
 #include <stdio.h>
 #include <string.h>
+#include "filesys/cache.h"
 #include "filesys/file.h"
 #include "filesys/free-map.h"
 #include "filesys/inode.h"
 #include "filesys/directory.h"
+#include "threads/thread.h"
 
 /* Partition that contains the file system. */
 struct block *fs_device;
 
 static void do_format (void);
 static int extract_next_string(char* ,char**);
-static struct dir* get_directory_from_path(char*, char*);
+static struct dir* get_dir_from_path(char*, char*);
 static struct inode* file_create(block_sector_t, off_t);
-bool is_root(const char*);
+static bool is_root(const char*);
 
 /* Initializes the file system module.
 If FORMAT is true, reformats the file system. */
@@ -55,7 +57,7 @@ filesys_create(const char *name, off_t initial_size, bool isdir)
   char *name_ = (char *)name;
   struct inode *inode = NULL;
   char *file_name;
-  struct dir *dir = get_directory_from_path(file_name, name_);
+  struct dir *dir = get_dir_from_path(file_name, name_);
   bool success = (dir != NULL && free_map_allocate(1, &inode_sector));
   if (success)
   {
@@ -120,7 +122,7 @@ filesys_open (const char *name)
     struct dir *dir = get_dir_from_path (file_name, name_);
     /* Cannot path a file from the given path. */
     if (dir == NULL)
-      reurn NULL;
+      return NULL;
 
     struct inode* inode;
     if (dir_lookup(dir, file_name, &inode))
@@ -181,8 +183,8 @@ filesys_chdir(const char*name)
   struct dir *dir = dir_open(filesys_open(name));
   if (dir != NULL)
   {
-    dir_close(thread_current()->working_dir);
-    thread_current()->working_dir = dir;
+    dir_close(thread_current()->directory);
+    thread_current()->directory = dir;
     success = true;
   }
    return success;
@@ -242,10 +244,10 @@ get_dir_from_path (char *file_name, char* full_path)
   /* Otherwise, this should be relative path. */
   else
   {
-    if (thread_current()->working_dir == NULL)
-      thread_current->working_dir = dir_open_root();
+    if (thread_current()->directory == NULL)
+      thread_current()->directory = dir_open_root();
     
-    dir = dir_reopen(thread_current()->working_dir);
+    dir = dir_reopen(thread_current()->directory);
   }
   
   /* Something wrong with the open operations above. */

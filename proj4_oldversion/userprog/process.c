@@ -22,26 +22,13 @@
 
 static thread_func start_process NO_RETURN;
 static bool load(const char *cmdline, void (**eip)(void), void **esp);
-/*global variable to store the target thread id*/
-static tid_t target_tid;
-/*global variable to sore the target thread*/
-static struct thread *target_t;
-static void search_thread(struct thread *t, void *aux);
+
 struct file_to_fd
 {
   int f_des;               /*file descriptor*/
   struct file *f_addr_ptr; /*file address*/
   struct list_elem f_list; /*fd list of thread*/
 };
-/*search thread by tid, wrapped in order to use foreach()*/
-static void
-search_thread(struct thread *t, void *aux UNUSED)
-{
-  if (target_tid == t->tid)
-  {
-    target_t = t;
-  }
-}
 
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
@@ -61,7 +48,6 @@ tid_t process_execute(const char *file_name)
   /*create a new string to store the program name*/
   char *save_ptr;
   char *name;
-  struct thread *cur = thread_current();
   /*strtok_r() refer to 'lib/string.c' line235*/
   name = strtok_r((char *)file_name, " ", &save_ptr);
   if (name == NULL)
