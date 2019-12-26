@@ -105,7 +105,7 @@ inode_create(block_sector_t sector, off_t length, bool is_dir)
 {
   struct inode_disk *disk_inode = NULL;
 
-  struct cache_entry *cache_entry;
+  struct cache_line *line;
   bool success = false;
 
   ASSERT (length >= 0);
@@ -114,18 +114,18 @@ inode_create(block_sector_t sector, off_t length, bool is_dir)
      one sector in size, and you should fix that. */
   ASSERT (sizeof *disk_inode == BLOCK_SECTOR_SIZE);
 
-  cache_entry = cache_alloc_and_lock(sector, true);
-  disk_inode = cache_get_data(cache_entry, true);
+  line = cache_allocate(sector, true);
+  disk_inode = cache_get_zero(line);
   disk_inode->length = 0;
   disk_inode->is_dir = is_dir ? 1 : 0;
   disk_inode->magic = INODE_MAGIC;
-  cache_mark_dirty(cache_entry);
-  cache_unlock(cache_entry, true);
+  cache_set_dirty(line);
+  cache_wake(line, true);
 
   struct inode *inode = inode_open(sector);
   if (inode == NULL)
   {
-    cache_dealloc(sector);
+    cache_free(sector);
     free_map_release(sector, 1);
   }
   return inode;
@@ -137,10 +137,10 @@ inode_is_dir(struct inode *inode)
 {
   if (inode == NULL)
     return false;
-  struct cache_entry *ce = cache_alloc_and_lock(inode->sector, false);
-  struct inode_disk *disk_inode = cache_get_data(ce, false);
+  struct cache_line *cl = cache_allocate(inode->sector, false);
+  struct inode_disk *disk_inode = cache_get_data(cl);
   bool type = disk_inode->is_dir;
-  cache_unlock(ce, false);
+  cache_wake(cl, false);
   return (type);
 }
 /* Reads an inode from SECTOR
@@ -237,8 +237,8 @@ inode_close (struct inode *inode)
 static void
 remove_inode (struct inode *inode)
 {
-  struct cache_entry *ce = cache_alloc_and_lock (inode->sector, true);
-  struct inode_disk *disk_inode = cache_get_data(ce, false);
+  struct cache_line *cl = cache_allocate (inode->sector, true);
+  struct inode_disk *disk_inode = cache_get_data(cl);
 
   for (int i = 0; i < NUM_TOTAL_SECTOR_IN_ARRAY; i++)
   {
@@ -251,59 +251,59 @@ remove_inode (struct inode *inode)
       {
         case 0:
         {
-          cache_dealloc(sector);
+          cache_free(sector);
           free_map_release(sector,1);
           break;
         }
         
         case 1:
         {
-          struct cache_entry *ce_indirect = cache_alloc_and_lock(sector, true);
-          block_sector_t *disk_inode_indirect = cache_get_data(ce_indirect, false);
+          struct cache_line *cl_indirect = cache_allocate(sector, true);
+          block_sector_t *disk_inode_indirect = cache_get_data(cl_indirect);
 
           for (int j = 0; j < NUM_BLOCK_PTR_PER_INODE; j++)
           {
             block_sector_t sector_indirect = disk_inode_indirect[j];
             if(sector_indirect!=0)
             {
-              cache_dealloc(sector_indirect);
+              cache_free(sector_indirect);
               free_map_release(sector_indirect, 1);
             }
           }
-          cache_unlock(ce_indirect, true);
-          cache_dealloc(sector);
+          cache_wake(cl_indirect, true);
+          cache_free(sector);
           free_map_release(sector, 1);
           break;
         }
         case 2:
         {
-          struct cache_entry *ce_indirect = cache_alloc_and_lock(sector, true);
-          block_sector_t *disk_inode_indirect = cache_get_data(ce_indirect, false);
+          struct cache_line *cl_indirect = cache_allocate(sector, true);
+          block_sector_t *disk_inode_indirect = cache_get_data(cl_indirect);
 
           for (int j = 0; j < NUM_BLOCK_PTR_PER_INODE; j++)
           {
             block_sector_t sector_indirect = disk_inode_indirect[j];
             if (sector_indirect != 0)
             {
-              struct cache_entry *ce_doub_indirect = cache_alloc_and_lock(sector_indirect, true);
-              block_sector_t *disk_inode_doub_indirect = cache_get_data(ce_indirect, false);
+              struct cache_line *cl_doub_indirect = cache_allocate(sector_indirect, true);
+              block_sector_t *disk_inode_doub_indirect = cache_get_data(cl_indirect);
 
               for (int j = 0; j < NUM_BLOCK_PTR_PER_INODE; j++)
               {
                 block_sector_t sector_doub_indirect = disk_inode_doub_indirect[j];
                 if (sector_doub_indirect != 0)
                 {
-                  cache_dealloc(sector_doub_indirect);
+                  cache_free(sector_doub_indirect);
                   free_map_release(sector_doub_indirect, 1);
                 }
               }
-              cache_unlock(ce_doub_indirect, true);
-              cache_dealloc(sector_indirect);
+              cache_wake(cl_doub_indirect, true);
+              cache_free(sector_indirect);
               free_map_release(sector_indirect, 1);
             }
           }
-          cache_unlock(ce_indirect, true);
-          cache_dealloc(sector);
+          cache_wake(cl_indirect, true);
+          cache_free(sector);
           free_map_release(sector, 1);
           break;
         }
@@ -313,8 +313,8 @@ remove_inode (struct inode *inode)
     }
   }
 
-  cache_unlock(ce, true);
-  cache_dealloc(inode->sector);
+  cache_wake(cl, true);
+  cache_free(inode->sector);
   free_map_release(inode->sector, 1);
   return;
 }
@@ -328,7 +328,7 @@ inode_remove (struct inode *inode)
 }
 
 static bool
-read_block (struct inode* inode, off_t offset, bool is_write, struct cache_entry **ce_result)
+read_block (struct inode* inode, off_t offset, bool is_write, struct cache_line **cl_result)
 {
   /* Check basic properties. */
   ASSERT(inode != NULL);
@@ -367,15 +367,15 @@ read_block (struct inode* inode, off_t offset, bool is_write, struct cache_entry
 
   int this_level = 0;
   block_sector_t sector = inode->sector;
-  struct cache_entry *ce;
+  struct cache_line *cl;
   uint32_t *data;
   block_sector_t *next_sector;
-  struct cache_entry *next_ce;
+  struct cache_line *next_cl;
 
   while(true)
   {
-    ce = cache_alloc_and_lock(sector, false);
-    data = cache_get_data (ce, false);
+    cl = cache_allocate(sector, false);
+    data = cache_get_data (cl);
     next_sector = &data[sector_offs[this_level]];
 
     /* Check if we have the 'next level sectors.' */
@@ -390,60 +390,60 @@ read_block (struct inode* inode, off_t offset, bool is_write, struct cache_entry
         {
           block_sector_t readahead_sector = data[sector_offs[this_level] + 1];
           if (readahead_sector && readahead_sector < block_size (fs_device))
-            cache_readahead_add (readahead_sector);
+            add_to_prepare (readahead_sector);
         }
         
-        cache_unlock(ce, false);
-        *ce_result = cache_alloc_and_lock (*next_sector, is_write);
+        cache_wake(cl, false);
+        *cl_result = cache_allocate (*next_sector, is_write);
         return true;
       }
       sector = *next_sector;
-      cache_unlock(ce, false);
+      cache_wake(cl, false);
       this_level++;
       continue;
     }
-    cache_unlock(ce, false);
+    cache_wake(cl, false);
 
     if(!is_write)
     {
-      *ce_result = NULL;
+      *cl_result = NULL;
       return true;
     }
 
     /* Need to allocate a new sector. */
-    ce = cache_alloc_and_lock (sector, true);
-    data = cache_get_data (ce, false);
+    cl = cache_allocate (sector, true);
+    data = cache_get_data (cl);
 
     next_sector = &data[sector_offs[this_level]];
 
     if(*next_sector != 0)
     {
-      cache_unlock (ce, true);
+      cache_wake (cl, true);
       continue;
     }
 
     /* Allocate the sector in disk. */
     if (!free_map_allocate(1,next_sector))
     {
-      cache_unlock(ce, true);
-      *ce_result = NULL;
+      cache_wake(cl, true);
+      *cl_result = NULL;
       return false;
     }
 
-    cache_mark_dirty(ce);
-     next_ce = cache_alloc_and_lock ( *next_sector, true);
-     cache_get_data(next_ce, true);
+    cache_set_dirty(cl);
+     next_cl = cache_allocate ( *next_sector, true);
+     cache_get_zero(next_cl);
 
-     cache_unlock(ce, true);
+     cache_wake(cl, true);
 
      if (this_level == level)
      {
-       *ce_result = next_ce;
+       *cl_result = next_cl;
        return true;
      }
 
      sector = *next_sector;
-     cache_unlock (next_ce, true);
+     cache_wake (next_cl, true);
      this_level ++;
   }
 }
@@ -492,17 +492,17 @@ inode_read_at (struct inode *inode, void *buffer_, off_t size, off_t offset)
       //     memcpy (buffer + bytes_read, bounce + sector_ofs, chunk_size);
       //   }
 
-        struct cache_entry *ce;
-        if (!read_block(inode, offset, false, &ce))
+        struct cache_line *cl;
+        if (!read_block(inode, offset, false, &cl))
           break;
 
-        if (ce == NULL)
+        if (cl == NULL)
           memset(buffer + bytes_read, 0, chunk_size);
         else
         {
-          uint8_t *data = cache_get_data(ce, false);
+          uint8_t *data = cache_get_data(cl);
           memcpy(buffer + bytes_read, data + sector_ofs, chunk_size);
-          cache_unlock(ce, false);
+          cache_wake(cl, false);
         }
 
         /* Advance. */
@@ -555,14 +555,14 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
     if (chunk_size <= 0)
       break;
 
-    struct cache_entry *ce;
-    if (!read_block(inode, offset, true, &ce))
+    struct cache_line *cl;
+    if (!read_block(inode, offset, true, &cl))
       break;
 
-    uint8_t *data = cache_get_data(ce, false);
+    uint8_t *data = cache_get_data(cl);
     memcpy(data + sector_ofs, buffer + bytes_written, chunk_size);
-    cache_mark_dirty(ce);
-    cache_unlock(ce, true);
+    cache_set_dirty(cl);
+    cache_wake(cl, true);
 
     /* Advance. */
     size -= chunk_size;
@@ -571,14 +571,14 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
     }
 
     /* Extend File. */
-    struct cache_entry *ce1 = cache_alloc_and_lock(inode->sector, true);
-    struct inode_disk *disk_inode1 = cache_get_data(ce1, false);
+    struct cache_line *cl1 = cache_allocate(inode->sector, true);
+    struct inode_disk *disk_inode1 = cache_get_data(cl1);
     if (offset > disk_inode1->length)
     {
       disk_inode1->length = offset;
-      cache_mark_dirty(ce1);
+      cache_set_dirty(cl1);
     }
-    cache_unlock(ce1, true);
+    cache_wake(cl1, true);
 
     /* Finish writing, others can deny write now. */
     lock_acquire(&inode->writer_lock);
@@ -621,11 +621,11 @@ inode_allow_write (struct inode *inode)
 off_t
 inode_length (const struct inode *inode)
 {
-  struct cache_entry *ce = cache_alloc_and_lock(inode->sector, false);
-  struct inode_disk *disk_inode = cache_get_data(ce, false);
+  struct cache_line *cl = cache_allocate(inode->sector, false);
+  struct inode_disk *disk_inode = cache_get_data(cl);
 
   off_t length = disk_inode->length;
-  cache_unlock(ce, false);
+  cache_wake(cl, false);
   return length;
 }
 
