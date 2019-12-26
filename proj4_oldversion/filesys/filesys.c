@@ -53,7 +53,7 @@ bool filesys_create(const char *name, off_t initial_size, bool isdir)
   block_sector_t inode_sector = 0;
   char *name_ = (char *)name;
   struct inode *inode = NULL;
-  char *file_name;
+  char file_name[NAME_MAX+1];
   struct dir *dir = get_dir_from_path(file_name, name_);
   bool success = (dir != NULL && free_map_allocate(1, &inode_sector));
   if (success)
@@ -245,9 +245,9 @@ get_dir_from_path(char *file_name, char *full_path)
   if (dir == NULL)
     return NULL;
 
-  // char string[NAME_MAX+1];
-  // char temp_name[NAME_MAX+1];
-  char *string, *temp_name;
+  char string[NAME_MAX+1];
+  char temp_name[NAME_MAX+1];
+  //char *string, *temp_name;
   char *fp = full_path;
   char *temp_path = fp;
   struct inode *inode;
