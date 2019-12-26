@@ -254,7 +254,7 @@ struct cache_line *cache_allocate(block_sector_t sector, bool exclusive)
             ASSERT(lock_held_by_current_thread(&line->cache_line_lock));
             if (exclusive)
             {
-                ASSERT(line->indicator);
+                ASSERT(line->indicator == 0);
                 line->indicator = -1;
             }
             else
@@ -348,7 +348,7 @@ void cache_free(block_sector_t sector)
             lock_release(&cache_lock);
             ASSERT(lock_held_by_current_thread(&line->cache_line_lock));
             /*the cache line should be exclusive when freeing*/
-            ASSERT(line->indicator);
+            ASSERT(line->indicator == 0);
             /*put all user into waiting queue*/
             line->indicator = -1;
             ASSERT(line->waiters == 0);

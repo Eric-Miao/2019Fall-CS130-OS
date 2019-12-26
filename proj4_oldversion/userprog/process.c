@@ -11,12 +11,14 @@
 #include "filesys/directory.h"
 #include "filesys/file.h"
 #include "filesys/filesys.h"
+#include "filesys/inode.h"
 #include "threads/flags.h"
 #include "threads/init.h"
 #include "threads/interrupt.h"
 #include "threads/palloc.h"
 #include "threads/thread.h"
 #include "threads/vaddr.h"
+#include "threads/malloc.h"
 
 #define MAX 300
 
@@ -30,6 +32,12 @@ struct file_to_fd
   struct list_elem f_list; /*fd list of thread*/
 };
 
+struct info
+{
+  char *file_name;
+  struct dir *parent_dir;
+};
+
 /* Starts a new thread running a user program loaded from
    FILENAME.  The new thread may be scheduled (and may even exit)
    before process_execute() returns.  Returns the new process's
@@ -38,7 +46,11 @@ tid_t process_execute(const char *file_name)
 {
   char *fn_copy;
   tid_t tid;
-
+  struct info *info = malloc(sizeof(struct info));
+  if (info == NULL)
+  {
+    return TID_ERROR;
+  }
   /* Make a copy of FILE_NAME.
      Otherwise there's a race between the caller and load(). */
   fn_copy = palloc_get_page(0);
@@ -54,12 +66,27 @@ tid_t process_execute(const char *file_name)
   {
     return TID_ERROR;
   }
+  struct dir *current_dir = thread_current()->directory;
+  if (current_dir == NULL)
+  {
+    info->parent_dir = dir_open_root();
+  }
+  else
+  {
+    info->parent_dir = dir_reopen(current_dir);
+  }
+  if (info->parent_dir == NULL)
+  {
+    return TID_ERROR;
+  }
+  info->file_name = fn_copy;
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create(name, PRI_DEFAULT, start_process, fn_copy);
+  tid = thread_create(name, PRI_DEFAULT, start_process, info);
   if (tid == TID_ERROR)
   {
     palloc_free_page(fn_copy);
   }
+  free(info);
   /*let current thread wait for child thread to finish loading*/
   sema_down(&thread_current()->waiting_parent);
   /*loading failed*/
@@ -72,9 +99,11 @@ tid_t process_execute(const char *file_name)
 /* A thread function that loads a user process and starts it
    running. */
 static void
-start_process(void *file_name_)
+start_process(void *aux)
 {
-  char *file_name = file_name_;
+  struct info *info = (struct info *)aux;
+  char *file_name = info->file_name;
+  thread_current()->directory = info->parent_dir;
   struct intr_frame if_;
   /*int load_status;*/
   bool success;
@@ -177,6 +206,7 @@ void process_exit(void)
   struct thread *cur = thread_current();
   uint32_t *pd;
   struct list_elem *temp;
+  dir_close(thread_current()->directory);
   /*save the message of process that to be terminated*/
   temp = list_begin(&cur->parent->children);
   while (temp != list_end(&cur->parent->children))
@@ -354,7 +384,7 @@ bool load(const char *file_name, void (**eip)(void), void **esp)
     token = strtok_r(NULL, " ", &save_ptr);
   }
   /* Open executable file. */
-  file = filesys_open(argv[0]);
+  file = file_open(filesys_open(argv[0]));
   /*printf("open is : %s/n",file);*/
   if (file == NULL)
   {

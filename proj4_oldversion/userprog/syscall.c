@@ -26,6 +26,7 @@ struct file_to_fd
 {
   int f_des;               /*file descriptor*/
   struct file *f_addr_ptr; /*file address*/
+  struct dir *d_addr_ptr;  /*directory address*/
   struct list_elem f_list; /*fd list of thread*/
 };
 /*function that get the arguments behind syscall from stack*/
@@ -430,9 +431,9 @@ int open(const char *file)
 {
   lock_acquire(&lock_f);
   /*open the file*/
-  struct file *f = filesys_open(file);
+  struct inode *inode = filesys_open(file);
   /*if file doesn't exist*/
-  if (f == NULL)
+  if (inode == NULL)
   {
     lock_release(&lock_f);
     return -1;
@@ -442,7 +443,16 @@ int open(const char *file)
   /*create a new file-fd-thread struct to store the open file info*/
   struct file_to_fd *new_f = malloc(sizeof(struct file_to_fd));
   /*add open file in*/
-  new_f->f_addr_ptr = f;
+  if (inode_is_dir(inode))
+  {
+    new_f->d_addr_ptr = dir_open(inode);
+    new_f->f_addr_ptr = NULL;
+  }
+  else
+  {
+    new_f->f_addr_ptr = file_open(inode);
+    new_f->d_addr_ptr = NULL;
+  }
   /*save the fd of current thread first*/
   int fd = curr->curr_fd;
   /*add curr fd by one for the next file*/
@@ -615,6 +625,7 @@ void close(int fd)
     {
       /*close the file and remove form file list*/
       file_close(link->f_addr_ptr);
+      dir_close(link->d_addr_ptr);
       list_remove(&link->f_list);
       curr->curr_fd--;
       free(link);
@@ -663,14 +674,7 @@ bool readdir(int fd, char *name)
     {
       /*release the lock and return*/
       lock_release(&lock_f);
-      if (inode_is_dir(link->f_addr_ptr->inode))
-      {
-        return dir_readdir(link->f_addr_ptr, name);
-      }
-      else
-      {
-        return false;
-      }
+      return dir_readdir(link->d_addr_ptr, name);
     }
     temp = temp->next;
   }
@@ -701,7 +705,7 @@ bool isdir(int fd)
     {
       /*release the lock and return*/
       lock_release(&lock_f);
-      return inode_is_dir(link->f_addr_ptr->inode);
+      return link->d_addr_ptr != NULL;
     }
     temp = temp->next;
   }
@@ -715,7 +719,7 @@ int inumber(int fd)
 {
   struct list_elem *temp;
   struct inode *inode = NULL;
-  struct file *file = NULL;
+  struct file_to_fd *target = NULL;
   struct thread *curr = thread_current();
   /*if there is no file to seek*/
   if (list_empty(&curr->file_des))
@@ -731,22 +735,22 @@ int inumber(int fd)
     /*if find the fd file*/
     if (link->f_des == fd)
     {
-      file = link->f_addr_ptr;
+      target = link;
     }
     temp = temp->next;
   }
   /*if we can't find file with fd*/
-  if (file == NULL)
+  if (target == NULL)
   {
     return -1;
   }
-  if (inode_is_dir(file->inode))
+  if (target->f_addr_ptr == NULL)
   {
-    inode = dir_get_inode(file);
+    inode = dir_get_inode(target->d_addr_ptr);
   }
   else
   {
-    inode = file_get_inode(file);
+    inode = file_get_inode(target->f_addr_ptr);
   }
   /*if we can't get inode*/
   if (inode == NULL)
