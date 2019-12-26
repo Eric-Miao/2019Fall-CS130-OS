@@ -76,6 +76,13 @@ void cache_init()
     thread_create("cache_write_period", PRI_DEFAULT, cache_write_period, NULL);
 }
 
+block_sector_t cache_line_size(struct cache_line *cl)
+{
+    if (cl == NULL){
+        return -1;
+    }
+    return cl->sector;
+}
 /* Allocate a cache line with given sector area*/
 struct cache_line *cache_allocate(block_sector_t sector, bool exclusive)
 {
@@ -313,7 +320,9 @@ void *cache_get_data(struct cache_line *line)
     /*if cache has no data yet then read from disk*/
     if (!line->used)
     {
+        printf("\n\nbefore read: %d\n\n",line->sector);
         block_read(fs_device, line->sector, line->data);
+        printf("\n\nafter read\n\n");
         line->dirty = false;
         line->used = true;
     }

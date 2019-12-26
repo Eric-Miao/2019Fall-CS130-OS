@@ -12,4 +12,5 @@ void *cache_get_zero(struct cache_line *line);
 void cache_free(block_sector_t sector);
 void cache_clear(void);
 void add_to_prepare(block_sector_t sector);
+block_sector_t cache_line_size(struct cache_line *cl);
 #endif

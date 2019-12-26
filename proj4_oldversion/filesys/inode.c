@@ -342,29 +342,59 @@ read_block (struct inode* inode, off_t offset, bool is_write, struct cache_line 
   /* Calculate the total offset by sector indicated by the offset. */
   off_t sector_offset_total = offset/BLOCK_SECTOR_SIZE;
 
-  off_t bound0 = NUM_DATA_SECTOR;
-  off_t bound1 = bound0 + NUM_BLOCK_PTR_PER_INODE * NUM_INDIRECT_SECTOR;
+  // off_t bound0 = NUM_DATA_SECTOR;
+  // off_t bound1 = bound0 + NUM_BLOCK_PTR_PER_INODE * NUM_INDIRECT_SECTOR;
 
-  if (sector_offset_total < bound0)
-  {    
-    level = 0;
-    sector_offs[0] = sector_offset_total;
-  }  
-  else if (sector_offset_total < bound1)
+  // if (sector_offset_total < bound0)
+  // {    
+  //   level = 0;
+  //   sector_offs[0] = sector_offset_total;
+  // }  
+  // else if (sector_offset_total < bound1)
+  // {
+  //   level = 1;
+  //   sector_offset_total -= bound0;
+  //   sector_offs[0] = NUM_DATA_SECTOR + sector_offset_total / NUM_BLOCK_PTR_PER_INODE;
+  //   sector_offs[1] = sector_offset_total % NUM_BLOCK_PTR_PER_INODE;
+  // }
+  // else
+  // {
+  //   level = 2;
+  //   sector_offset_total -= bound1;
+  //   sector_offs[0] = NUM_DATA_SECTOR + NUM_INDIRECT_SECTOR +
+  //                   sector_offset_total / (NUM_BLOCK_PTR_PER_INODE * NUM_BLOCK_PTR_PER_INODE);
+  //   sector_offs[1] = sector_offset_total / NUM_BLOCK_PTR_PER_INODE;
+  //   sector_offs[2] = sector_offset_total % NUM_BLOCK_PTR_PER_INODE;
+  // }
+  if (sector_offset_total < (off_t)NUM_DATA_SECTOR)
   {
+    /* Direct data block. */
+    sector_offs[0] = sector_offset_total;
+    printf("\n %d \n",sector_offs[0]);
     level = 1;
-    sector_offs[0] = NUM_DATA_SECTOR + sector_offset_total / NUM_BLOCK_PTR_PER_INODE;
-    sector_offs[1] = sector_offset_total % NUM_BLOCK_PTR_PER_INODE;
   }
   else
   {
-    level = 2;
-    sector_offs[0] = NUM_DATA_SECTOR + NUM_INDIRECT_SECTOR +
-                    sector_offset_total / (NUM_BLOCK_PTR_PER_INODE * NUM_BLOCK_PTR_PER_INODE);
-    sector_offs[1] = sector_offset_total / NUM_BLOCK_PTR_PER_INODE;
-    sector_offs[2] = sector_offset_total % NUM_BLOCK_PTR_PER_INODE;
+    sector_offset_total -= NUM_DATA_SECTOR;
+    if (sector_offset_total < (off_t)(NUM_BLOCK_PTR_PER_INODE * NUM_INDIRECT_SECTOR))
+    {
+      /* Indirect block. */
+      sector_offs[0] = NUM_DATA_SECTOR + sector_offset_total / NUM_BLOCK_PTR_PER_INODE;
+      sector_offs[1] = sector_offset_total % NUM_BLOCK_PTR_PER_INODE;
+      level = 2;
+    }
+    else
+    {
+      /* Double indirect block. */
+      sector_offset_total -= NUM_BLOCK_PTR_PER_INODE * NUM_INDIRECT_SECTOR;
+      sector_offs[0] = NUM_DATA_SECTOR + NUM_INDIRECT_SECTOR +
+                       sector_offset_total / (NUM_BLOCK_PTR_PER_INODE * NUM_BLOCK_PTR_PER_INODE);
+      sector_offs[1] = sector_offset_total / NUM_BLOCK_PTR_PER_INODE;
+      sector_offs[2] = sector_offset_total % NUM_BLOCK_PTR_PER_INODE;
+      level = 3;
+    }
   }
-
+  level--;
   int this_level = 0;
   block_sector_t sector = inode->sector;
   struct cache_line *cl;
@@ -376,8 +406,9 @@ read_block (struct inode* inode, off_t offset, bool is_write, struct cache_line 
   {
     cl = cache_allocate(sector, false);
     data = cache_get_data (cl);
+    printf("\ndata is %d\n",data[0]);
     next_sector = &data[sector_offs[this_level]];
-
+    printf("\nlocation 0 this level is : %d\n",this_level);
     /* Check if we have the 'next level sectors.' */
     if (*next_sector != 0)
     {
@@ -395,6 +426,7 @@ read_block (struct inode* inode, off_t offset, bool is_write, struct cache_line 
         
         cache_wake(cl, false);
         *cl_result = cache_allocate (*next_sector, is_write);
+        printf("\nlocation 1 cache_line sector is : %d\n",(int)cache_line_size(*cl_result));
         return true;
       }
       sector = *next_sector;
@@ -439,6 +471,7 @@ read_block (struct inode* inode, off_t offset, bool is_write, struct cache_line 
      if (this_level == level)
      {
        *cl_result = next_cl;
+        printf("\nlocation 2 cache_line sector is : %d\n",(int)cache_line_size(*cl_result));
        return true;
      }
 
@@ -556,10 +589,12 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
       break;
 
     struct cache_line *cl;
+    printf("\noffset is : %d\n",inode->sector);
     if (!read_block(inode, offset, true, &cl))
       break;
-
+    printf("\nfsdevice size is %d\n cache_line sector is : %d\n",(int)block_size(fs_device),(int)cache_line_size(cl));
     uint8_t *data = cache_get_data(cl);
+    printf("\nsafe\n");
     memcpy(data + sector_ofs, buffer + bytes_written, chunk_size);
     cache_set_dirty(cl);
     cache_wake(cl, true);

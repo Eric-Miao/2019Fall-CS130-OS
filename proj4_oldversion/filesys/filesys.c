@@ -115,7 +115,7 @@ filesys_open(const char *name)
     return inode_open(ROOT_DIR_SECTOR);
   else
   {
-    char *file_name;
+    char file_name[NAME_MAX + 1];
     struct dir *dir = get_dir_from_path(file_name, name_);
     /* Cannot path a file from the given path. */
     if (dir == NULL)
@@ -142,7 +142,7 @@ filesys_open(const char *name)
 bool filesys_remove(const char *name)
 {
   char *name_ = (char *)name;
-  char *file_name;
+  char file_name[NAME_MAX +1];
   struct dir *dir = get_dir_from_path(file_name, name_);
   if (dir == NULL)
     return false;

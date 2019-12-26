@@ -4,6 +4,11 @@
     "malloc.h": "c",
     "synch.h": "c",
     "thread.h": "c",
-    "inode.h": "c"
+    "inode.h": "c",
+    "array": "c",
+    "hash_map": "c",
+    "bitset": "c",
+    "initializer_list": "c",
+    "utility": "c"
   }
 }
