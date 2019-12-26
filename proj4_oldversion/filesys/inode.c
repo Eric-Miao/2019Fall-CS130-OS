@@ -160,7 +160,7 @@ inode_open (block_sector_t sector)
       inode = list_entry (e, struct inode, elem);
       if (inode->sector == sector) 
         {
-          inode_reopen (inode);
+          inode->open_cnt++;
           lock_release(&lock_open_inodes);
           return inode; 
         }

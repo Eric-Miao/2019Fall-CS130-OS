@@ -12,46 +12,43 @@
 /* Partition that contains the file system. */
 struct block *fs_device;
 
-static void do_format (void);
-static int extract_next_string(char* ,char**);
-static struct dir* get_dir_from_path(char*, char*);
-static struct inode* file_create(block_sector_t, off_t);
-static bool is_root(const char*);
+static void do_format(void);
+static int extract_next_string(char *, char **);
+static struct dir *get_dir_from_path(char *, char *);
+static struct inode *file_create(block_sector_t, off_t);
+static bool is_root(const char *);
 
 /* Initializes the file system module.
 If FORMAT is true, reformats the file system. */
-void 
-filesys_init(bool format)
+void filesys_init(bool format)
 {
-  fs_device = block_get_role (BLOCK_FILESYS);
+  fs_device = block_get_role(BLOCK_FILESYS);
   if (fs_device == NULL)
-    PANIC ("No file system device found, can't initialize file system.");
+    PANIC("No file system device found, can't initialize file system.");
 
-  inode_init ();
+  inode_init();
   cache_init();
-  free_map_init ();
+  free_map_init();
 
-  if (format) 
-    do_format ();
+  if (format)
+    do_format();
 
-  free_map_open ();
+  free_map_open();
 }
 
 /* Shuts down the file system module, writing any unwritten data
    to disk. */
-void
-filesys_done (void) 
+void filesys_done(void)
 {
   cache_clear();
-  free_map_close ();
+  free_map_close();
 }
-
+
 /* Creates a file named NAME with the given INITIAL_SIZE.
    Returns true if successful, false otherwise.
    Fails if a file named NAME already exists,
    or if internal memory allocation fails. */
-bool 
-filesys_create(const char *name, off_t initial_size, bool isdir)
+bool filesys_create(const char *name, off_t initial_size, bool isdir)
 {
   block_sector_t inode_sector = 0;
   char *name_ = (char *)name;
@@ -111,20 +108,20 @@ done:
    Fails if no file named NAME exists,
    or if an internal memory allocation fails. */
 struct file *
-filesys_open (const char *name)
+filesys_open(const char *name)
 {
-  char *name_ = (char *) name;
+  char *name_ = (char *)name;
   if (is_root(name_))
     return inode_open(ROOT_DIR_SECTOR);
   else
   {
     char *file_name;
-    struct dir *dir = get_dir_from_path (file_name, name_);
+    struct dir *dir = get_dir_from_path(file_name, name_);
     /* Cannot path a file from the given path. */
     if (dir == NULL)
       return NULL;
 
-    struct inode* inode;
+    struct inode *inode;
     if (dir_lookup(dir, file_name, &inode))
     {
       dir_close(dir);
@@ -142,8 +139,7 @@ filesys_open (const char *name)
    Returns true if successful, false on failure.
    Fails if no file named NAME exists,
    or if an internal memory allocation fails. */
-bool
-filesys_remove (const char *name) 
+bool filesys_remove(const char *name)
 {
   char *name_ = (char *)name;
   char *file_name;
@@ -152,32 +148,30 @@ filesys_remove (const char *name)
     return false;
   else
   {
-    if(dir_remove(dir,file_name))
+    if (dir_remove(dir, file_name))
     {
       dir_close(dir);
       return true;
     }
     else
       return false;
-    
   }
 }
-
+
 /* Formats the file system. */
 static void
-do_format (void)
+do_format(void)
 {
-  printf ("Formatting file system...");
-  free_map_create ();
-  if (!dir_create (ROOT_DIR_SECTOR, 16))
-    PANIC ("root directory creation failed");
-  free_map_close ();
-  printf ("done.\n");
+  printf("Formatting file system...");
+  free_map_create();
+  if (!dir_create(ROOT_DIR_SECTOR, 16))
+    PANIC("root directory creation failed");
+  free_map_close();
+  printf("done.\n");
 }
 
 /* change the working dir of current thread the NAME. */
-bool
-filesys_chdir(const char*name)
+bool filesys_chdir(const char *name)
 {
   bool success = false;
   struct dir *dir = dir_open(filesys_open(name));
@@ -187,7 +181,7 @@ filesys_chdir(const char*name)
     thread_current()->directory = dir;
     success = true;
   }
-   return success;
+  return success;
 }
 
 /* Extract the next string from the full_path into string
@@ -199,40 +193,38 @@ extract_next_string(char *string, char **full_path)
 {
   char *path = *full_path;
   int length = 0;
-
-  while(*path == '/')
-    path ++;
+  while (*path == '/')
+    path++;
   /* From the head all the way to the end is '/' */
-  if(*path == '\0')
+  if (*path == '\0')
     return 0;
-
-  while (*path!= '\0' && *path!= '/')
+  while (*path != '\0' && *path != '/')
   {
-    *string = *path;
+    string[length] = *path;
     length++;
     /* Name is too long to fit in one file. */
     if (length > NAME_MAX)
+    {
       return -1;
-    string ++;
-    path ++;
+    }
+    path++;
   }
-
   /* Substitude the original path with a new shorten, post-extracted path. */
   *full_path = path;
   /* Indicate the end of a string with a null pointer. */
-  *string = '\0';
+  string[length] = '\0';
   return 1;
 }
 
 /* This is actually getting the last dir from the full_path, which in my opinion 
 can be substituded by the way ref2 implemented. */
-static struct dir*
-get_dir_from_path (char *file_name, char* full_path)
+static struct dir *
+get_dir_from_path(char *file_name, char *full_path)
 {
   struct dir *dir = NULL;
   if (full_path == NULL)
     return dir;
-  
+
   /* Before we start parse the dir from path,
   we first locate oursevles at the root dir, or
   the current working_dir if exists. */
@@ -240,20 +232,19 @@ get_dir_from_path (char *file_name, char* full_path)
   /* Start with '/' is a absolute addr. */
   if (full_path[0] == '/')
     dir = dir_open_root();
-  
+
   /* Otherwise, this should be relative path. */
   else
   {
     if (thread_current()->directory == NULL)
       thread_current()->directory = dir_open_root();
-    
+
     dir = dir_reopen(thread_current()->directory);
   }
-  
   /* Something wrong with the open operations above. */
-  if(dir == NULL)
+  if (dir == NULL)
     return NULL;
-  
+
   // char string[NAME_MAX+1];
   // char temp_name[NAME_MAX+1];
   char *string, *temp_name;
@@ -261,15 +252,13 @@ get_dir_from_path (char *file_name, char* full_path)
   char *temp_path = fp;
   struct inode *inode;
   int status;
-
   /* No more string to parse except for '/' */
-  if (extract_next_string(temp_name, &temp_path) == 0) 
+  if (extract_next_string(temp_name, &temp_path) == 0)
   {
     /* Get no more new dir from the path, so exit with NULL */
     dir_close(dir);
     return NULL;
   }
-
   /* Parse the full_path in to string all the way until either 0: no mroe string -1: failure. 
     string is the next level name, fp is what left.*/
   while ((status = extract_next_string(string, &fp)) == 1)
@@ -297,20 +286,20 @@ get_dir_from_path (char *file_name, char* full_path)
     dir_close(dir);
     dir = dir_open(inode);
   }
-  
+
   if (status == -1)
   {
     dir_close(dir);
   }
   else
   {
-    strlcpy(file_name, string, NAME_MAX+1);
+    strlcpy(file_name, string, NAME_MAX + 1);
     return dir;
   }
 }
 
 static bool
-is_root(const char* path)
+is_root(const char *path)
 {
   // char temp_name[NAME_MAX+1];
   char *temp_name;
@@ -321,7 +310,7 @@ is_root(const char* path)
 }
 
 /* This could be simplified in to the function filesys_create as we did in the pre_version. */
-static struct inode*
+static struct inode *
 file_create(block_sector_t inode_sector, off_t initial_size)
 {
   struct inode *inode = inode_create(inode_sector, initial_size, false);
