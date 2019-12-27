@@ -15,11 +15,11 @@
 
 #define SECTOR_PTR_CNT (BLOCK_SECTOR_SIZE / sizeof(block_sector_t))
 /* Number of meta data. */
-#define META_PTR_CNT 3
+#define META_PTR_CNT (SECTOR_PTR_CNT - BLOCK_PTR_CNT)
 /* Number of data sectors. */
-#define BLOCK_PTR_CNT (SECTOR_PTR_CNT - META_PTR_CNT)
+#define BLOCK_PTR_CNT 12
 /* Number of indirect data sectors. */
-#define INDIRECT_BLOCK_CNT 16
+#define INDIRECT_BLOCK_CNT 1
 /* Number of double indirect data sectors. */
 #define DOUBLE_INDIRECT_BLOCK_CNT 1
 /* Number of direct data sectors. */
@@ -38,6 +38,7 @@ struct inode_disk
   off_t length;                          /* File size in bytes. */
   int type;                              /* File : 0 ; dir : 1 */
   unsigned magic;                        /* Magic number. */
+  uint32_t unused [META_PTR_CNT-3];
 };
 
 /* Returns the number of sectors to allocate for an inode SIZE
@@ -363,6 +364,33 @@ read_block (struct inode *inode, off_t offset,
       level = 3;
     }
   }
+  // off_t sector_offset_total = offset / BLOCK_SECTOR_SIZE;
+
+  // off_t bound0 = (off_t)DATA_BLOCK_CNT;
+  // off_t bound1 = bound0 + (off_t)(SECTOR_PTR_CNT * INDIRECT_BLOCK_CNT);
+
+  // if (sector_offset_total < bound0)
+  // {
+  //   sector_offs[0] = sector_offset_total;
+  //   level = 1;
+  // }
+  // else if (bound0 <= sector_offset_total < bound1)
+  // {
+  //   sector_offset_total -= bound0;
+  //   sector_offs[0] = DATA_BLOCK_CNT + sector_offset_total / SECTOR_PTR_CNT;
+  //   sector_offs[1] = sector_offset_total % SECTOR_PTR_CNT;
+  //   level = 2;
+  // }
+  // else
+  // {
+  //   sector_offset_total -= bound1;
+  //   sector_offs[0] = DATA_BLOCK_CNT + INDIRECT_BLOCK_CNT +
+  //                   sector_offset_total / (SECTOR_PTR_CNT * SECTOR_PTR_CNT);
+  //   sector_offs[1] = sector_offset_total / SECTOR_PTR_CNT;
+  //   sector_offs[2] = sector_offset_total % SECTOR_PTR_CNT;
+  //   level = 3;
+  // }
+
   //printf("\nin read bolck\n");
   int this_level = 0;
   block_sector_t sector = inode->sector;
