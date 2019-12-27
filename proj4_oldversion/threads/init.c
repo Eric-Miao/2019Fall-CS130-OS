@@ -125,6 +125,7 @@ main (void)
   ide_init ();
   locate_block_devices ();
   filesys_init (format_filesys);
+  thread_directory_init();
 #endif
 
   printf ("Boot complete.\n");
@@ -285,6 +286,8 @@ run_task (char **argv)
   
   printf ("Executing '%s':\n", task);
 #ifdef USERPROG
+  //printf("\nbefore\n");
+  //printf("\nafter\n");
   process_wait (process_execute (task));
 #else
   run_test (task);

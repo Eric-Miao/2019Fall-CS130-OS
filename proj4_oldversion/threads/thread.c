@@ -27,6 +27,8 @@ static struct list ready_list;
    when they are first scheduled and removed when they exit. */
 static struct list all_list;
 
+static bool booted = false;
+
 /* Idle thread. */
 static struct thread *idle_thread;
 
@@ -249,11 +251,11 @@ tid_t thread_create(const char *name, int priority,
   /* Initialize thread. */
   init_thread(t, name, priority);
   tid = t->tid = allocate_tid();
-  struct last_words* lw = malloc(sizeof(*lw));
+  struct last_words *lw = malloc(sizeof(*lw));
   lw->tid = tid;
   lw->code = t->exitcode;
   lw->running = 0;
-  list_push_back (&running_thread()->children, &lw->ele);
+  list_push_back(&running_thread()->children, &lw->ele);
 
   old_level = intr_disable();
   /* Stack frame for kernel_thread(). */
@@ -667,7 +669,8 @@ init_thread(struct thread *t, const char *name, int priority)
   sema_init(&t->waiting_parent, 0);
   /*initiate exit status with unexpect situation*/
   t->exitcode = -1;
-  t->directory = NULL;
+  if (booted)
+    t->directory = dir_open_current();
   /*old_level = intr_disable();
   list_insert_ordered(&all_list, &t->allelem, (list_less_func *)&is_priority_less, NULL);
   intr_set_level(old_level);*/
@@ -685,6 +688,14 @@ alloc_frame(struct thread *t, size_t size)
 
   t->stack -= size;
   return t->stack;
+}
+
+void thread_directory_init(void)
+{
+#ifdef USERPROG
+  initial_thread->directory = dir_open_root();
+  booted = true;
+#endif
 }
 
 /* Chooses and returns the next thread to be scheduled.  Should

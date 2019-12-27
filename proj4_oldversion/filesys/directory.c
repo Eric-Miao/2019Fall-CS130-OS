@@ -263,6 +263,11 @@ done:
   return success;
 }
 
+struct dir *dir_open_current ()
+{
+    return dir_open (inode_reopen (thread_current()->directory->inode));
+}
+
 /* Reads the next directory entry in DIR and stores the name in
    NAME.  Returns true if successful, false if the directory
    contains no more entries. */

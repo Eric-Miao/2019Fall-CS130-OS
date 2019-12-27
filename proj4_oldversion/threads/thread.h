@@ -6,6 +6,7 @@
 #include <stdint.h>
 #include "synch.h"
 #include "filesys/file.h"
+#include "filesys/directory.h"
 
 /* States in a thread's life cycle. */
 enum thread_status
@@ -169,6 +170,7 @@ extern bool thread_mlfqs;
 
 void thread_init (void);
 void thread_start (void);
+void thread_directory_init(void);
 
 void thread_tick (void);
 void thread_print_stats (void);

@@ -320,9 +320,9 @@ void *cache_get_data(struct cache_line *line)
     /*if cache has no data yet then read from disk*/
     if (!line->used)
     {
-        printf("\n\nbefore read: %d\n\n",line->sector);
+        //printf("\n\nbefore read: %d\n\n",line->sector);
         block_read(fs_device, line->sector, line->data);
-        printf("\n\nafter read\n\n");
+        //printf("\n\nafter read\n\n");
         line->dirty = false;
         line->used = true;
     }

@@ -53,7 +53,7 @@ bool filesys_create(const char *name, off_t initial_size, bool isdir)
   block_sector_t inode_sector = 0;
   char *name_ = (char *)name;
   struct inode *inode = NULL;
-  char file_name[NAME_MAX+1];
+  char file_name[NAME_MAX + 1];
   struct dir *dir = get_dir_from_path(file_name, name_);
   bool success = (dir != NULL && free_map_allocate(1, &inode_sector));
   if (success)
@@ -110,11 +110,15 @@ done:
 struct file *
 filesys_open(const char *name)
 {
+  //printf("\nin file open name is : %s\n",name);
   char *name_ = (char *)name;
   if (is_root(name_))
+  {
     return inode_open(ROOT_DIR_SECTOR);
+  }
   else
   {
+    //printf("\nin is file open\n");
     char file_name[NAME_MAX + 1];
     struct dir *dir = get_dir_from_path(file_name, name_);
     /* Cannot path a file from the given path. */
@@ -142,7 +146,7 @@ filesys_open(const char *name)
 bool filesys_remove(const char *name)
 {
   char *name_ = (char *)name;
-  char file_name[NAME_MAX +1];
+  char file_name[NAME_MAX + 1];
   struct dir *dir = get_dir_from_path(file_name, name_);
   if (dir == NULL)
     return false;
@@ -191,6 +195,7 @@ bool filesys_chdir(const char *name)
 static int
 extract_next_string(char *string, char **full_path)
 {
+  //printf("\nin is extracting\n");
   char *path = *full_path;
   int length = 0;
   while (*path == '/')
@@ -245,8 +250,8 @@ get_dir_from_path(char *file_name, char *full_path)
   if (dir == NULL)
     return NULL;
 
-  char string[NAME_MAX+1];
-  char temp_name[NAME_MAX+1];
+  char string[NAME_MAX + 1];
+  char temp_name[NAME_MAX + 1];
   //char *string, *temp_name;
   char *fp = full_path;
   char *temp_path = fp;
@@ -301,11 +306,23 @@ get_dir_from_path(char *file_name, char *full_path)
 static bool
 is_root(const char *path)
 {
-  // char temp_name[NAME_MAX+1];
-  char *temp_name;
+  //printf("\nin is root\n");
+  char temp_name[NAME_MAX + 1];
+  //char *temp_name;
   char *temp_path = (char *)path;
-  if (path[0] == '/' && extract_next_string(temp_name, &temp_path) == 0)
-    return true;
+  if (path[0] == '/')
+  {
+    //printf("\nin this line\n");
+    if (extract_next_string(temp_name, &temp_path) == 0)
+    {
+      return true;
+    }
+    else
+    {
+      return false;
+    }
+  }
+  //printf("\nin this line\n");
   return false;
 }
 
