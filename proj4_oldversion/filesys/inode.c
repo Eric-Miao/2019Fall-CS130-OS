@@ -58,10 +58,10 @@ struct inode
   bool removed;           /* True if deleted, false otherwise. */
   struct lock inode_lock; /* Lock used for directory. */
 
-  int being_written;           /* 0: writes ok, >0: deny writes. */
-  struct lock dw_lock;         /* Lock for deny write. */
-  struct condition no_writers; /* Condition indicating no writers. */
-  int writers;                 /* Can only deny write when there's no writer. */
+  int being_written;            /* 0: writes ok, >0: deny writes. */
+  struct lock writing_lock;     /* Lock for deny write. */
+  struct condition writer_cond; /* Condition indicating no writers. */
+  int writers;                  /* Can only deny write when there's no writer. */
 };
 
 /* Returns the block device sector that contains byte offset POS
@@ -159,13 +159,13 @@ inode_open(block_sector_t sector)
   list_push_front(&open_inodes, &inode->elem);
   inode->sector = sector;
   inode->open_cnt = 1;
-  inode->removed = false;
-  lock_init(&inode->inode_lock);
-
   inode->being_written = 0;
-  lock_init(&inode->dw_lock);
   inode->writers = 0;
-  cond_init(&inode->no_writers);
+  inode->removed = false;
+
+  lock_init(&inode->inode_lock);
+  lock_init(&inode->writing_lock);
+  cond_init(&inode->writer_cond);
 
   lock_release(&lock_open_inodes);
   return inode;
@@ -252,8 +252,7 @@ remove_inode(struct inode *inode)
         /* Deallocate indirect block. */
         struct cache_line *indirect_cl = cache_allocate(sector, true);
         block_sector_t *indirect_disk_inode = cache_get_data(indirect_cl);
-        int j;
-        for (j = 0; j < (int)SECTOR_PTR_CNT; j++)
+        for (int j = 0; j < (int)SECTOR_PTR_CNT; j++)
         {
           block_sector_t direct_sector = indirect_disk_inode[j];
           if (direct_sector != 0)
@@ -272,18 +271,16 @@ remove_inode(struct inode *inode)
         /* Deallocate double indirect block. */
         struct cache_line *double_indirect_cl = cache_allocate(sector, true);
         block_sector_t *double_indirect_disk_inode = cache_get_data(double_indirect_cl);
-        int m;
-        for (m = 0; m < (int)SECTOR_PTR_CNT; m++)
+        for (int k = 0; k < (int)SECTOR_PTR_CNT; k++)
         {
-          block_sector_t indirect_sector = double_indirect_disk_inode[m];
+          block_sector_t indirect_sector = double_indirect_disk_inode[k];
           if (indirect_sector != 0)
           {
             struct cache_line *indirect_cl = cache_allocate(indirect_sector, true);
             block_sector_t *indirect_disk_inode = cache_get_data(indirect_cl);
-            int n;
-            for (n = 0; n < (int)SECTOR_PTR_CNT; n++)
+            for (int l = 0; l < (int)SECTOR_PTR_CNT; l++)
             {
-              block_sector_t direct_sector = indirect_disk_inode[n];
+              block_sector_t direct_sector = indirect_disk_inode[l];
               if (direct_sector != 0)
               {
                 cache_free(direct_sector);
@@ -527,15 +524,15 @@ off_t inode_write_at(struct inode *inode, const void *buffer_, off_t size,
   off_t bytes_written = 0;
 
   /* Check whether write is allowed. */
-  lock_acquire(&inode->dw_lock);
+  lock_acquire(&inode->writing_lock);
   if (inode->being_written > 0)
   {
-    lock_release(&inode->dw_lock);
+    lock_release(&inode->writing_lock);
     return 0;
   }
 
   inode->writers++;
-  lock_release(&inode->dw_lock);
+  lock_release(&inode->writing_lock);
 
   while (size > 0)
   {
@@ -579,10 +576,10 @@ off_t inode_write_at(struct inode *inode, const void *buffer_, off_t size,
   cache_wake(cl1, true);
 
   /* Finish writing, others can deny write now. */
-  lock_acquire(&inode->dw_lock);
+  lock_acquire(&inode->writing_lock);
   if (--inode->writers == 0)
-    cond_signal(&inode->no_writers, &inode->dw_lock);
-  lock_release(&inode->dw_lock);
+    cond_signal(&inode->writer_cond, &inode->writing_lock);
+  lock_release(&inode->writing_lock);
 
   return bytes_written;
 }
@@ -591,13 +588,13 @@ off_t inode_write_at(struct inode *inode, const void *buffer_, off_t size,
    May be called at most once per inode opener. */
 void inode_deny_write(struct inode *inode)
 {
-  lock_acquire(&inode->dw_lock);
+  lock_acquire(&inode->writing_lock);
   /* Only can deny write when there's no writer. */
   while (inode->writers > 0)
-    cond_wait(&inode->no_writers, &inode->dw_lock);
+    cond_wait(&inode->writer_cond, &inode->writing_lock);
   inode->being_written++;
   ASSERT(inode->being_written <= inode->open_cnt);
-  lock_release(&inode->dw_lock);
+  lock_release(&inode->writing_lock);
 }
 
 /* Re-enables writes to INODE.
@@ -605,11 +602,11 @@ void inode_deny_write(struct inode *inode)
    inode_deny_write() on the inode, before closing the inode. */
 void inode_allow_write(struct inode *inode)
 {
-  lock_acquire(&inode->dw_lock);
+  lock_acquire(&inode->writing_lock);
   ASSERT(inode->being_written > 0);
   ASSERT(inode->being_written <= inode->open_cnt);
   inode->being_written--;
-  lock_release(&inode->dw_lock);
+  lock_release(&inode->writing_lock);
 }
 
 /* Returns the length, in bytes, of INODE's data. */
