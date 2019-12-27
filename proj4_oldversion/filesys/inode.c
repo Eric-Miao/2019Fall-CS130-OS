@@ -227,14 +227,17 @@ remove_inode(struct inode *inode)
 {
   struct cache_line *cl = cache_allocate(inode->sector, true);
   struct inode_disk *disk_inode = cache_get_data(cl);
-  int i;
-  for (i = 0; i < (int)BLOCK_PTR_CNT; i++)
+  for (int i = 0; i < (int)BLOCK_PTR_CNT; i++)
   {
     block_sector_t sector = disk_inode->sectors[i];
+    int level = 0;
+    if (i == 10)
+      level = 1;
+    else if (i == 11)
+      level = 2;
+
     if (sector != 0)
     {
-      int level = (i >= (int)DATA_BLOCK_CNT) +
-                  (i >= (int)(DATA_BLOCK_CNT + INDIRECT_BLOCK_CNT));
       switch (level)
       {
       case 0:
@@ -247,19 +250,19 @@ remove_inode(struct inode *inode)
       case 1:
       {
         /* Deallocate indirect block. */
-        struct cache_line *cl1 = cache_allocate(sector, true);
-        block_sector_t *disk_inode1 = cache_get_data(cl1);
+        struct cache_line *indirect_cl = cache_allocate(sector, true);
+        block_sector_t *indirect_disk_inode = cache_get_data(indirect_cl);
         int j;
         for (j = 0; j < (int)SECTOR_PTR_CNT; j++)
         {
-          block_sector_t sector1 = disk_inode1[j];
-          if (sector1 != 0)
+          block_sector_t direct_sector = indirect_disk_inode[j];
+          if (direct_sector != 0)
           {
-            cache_free(sector1);
-            free_map_release(sector1, 1);
+            cache_free(direct_sector);
+            free_map_release(direct_sector, 1);
           }
         }
-        cache_wake(cl1, true);
+        cache_wake(indirect_cl, true);
         cache_free(sector);
         free_map_release(sector, 1);
         break;
@@ -267,32 +270,32 @@ remove_inode(struct inode *inode)
       case 2:
       {
         /* Deallocate double indirect block. */
-        struct cache_line *cl2 = cache_allocate(sector, true);
-        block_sector_t *disk_inode2 = cache_get_data(cl2);
+        struct cache_line *double_indirect_cl = cache_allocate(sector, true);
+        block_sector_t *double_indirect_disk_inode = cache_get_data(double_indirect_cl);
         int m;
         for (m = 0; m < (int)SECTOR_PTR_CNT; m++)
         {
-          block_sector_t sector2 = disk_inode2[m];
-          if (sector2 != 0)
+          block_sector_t indirect_sector = double_indirect_disk_inode[m];
+          if (indirect_sector != 0)
           {
-            struct cache_line *ce3 = cache_allocate(sector2, true);
-            block_sector_t *disk_inode3 = cache_get_data(ce3);
+            struct cache_line *indirect_cl = cache_allocate(indirect_sector, true);
+            block_sector_t *indirect_disk_inode = cache_get_data(indirect_cl);
             int n;
             for (n = 0; n < (int)SECTOR_PTR_CNT; n++)
             {
-              block_sector_t sector3 = disk_inode3[n];
-              if (sector3 != 0)
+              block_sector_t direct_sector = indirect_disk_inode[n];
+              if (direct_sector != 0)
               {
-                cache_free(sector3);
-                free_map_release(sector3, 1);
+                cache_free(direct_sector);
+                free_map_release(direct_sector, 1);
               }
             }
-            cache_wake(ce3, true);
-            cache_free(sector2);
-            free_map_release(sector2, 1);
+            cache_wake(indirect_cl, true);
+            cache_free(indirect_sector);
+            free_map_release(indirect_sector, 1);
           }
         }
-        cache_wake(cl2, true);
+        cache_wake(double_indirect_cl, true);
         cache_free(sector);
         free_map_release(sector, 1);
         break;
