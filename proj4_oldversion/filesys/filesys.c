@@ -50,6 +50,7 @@ void filesys_done(void)
    or if internal memory allocation fails. */
 bool filesys_create(const char *name, off_t initial_size, bool isdir)
 {
+  //printf("\nin filesys create\n");
   block_sector_t inode_sector = 0;
   char *name_ = (char *)name;
   struct inode *inode = NULL;
@@ -330,15 +331,18 @@ is_root(const char *path)
 static struct inode *
 file_create(block_sector_t inode_sector, off_t initial_size)
 {
+  //printf("\nin file create\n");
   struct inode *inode = inode_create(inode_sector, initial_size, false);
   if (inode == NULL || initial_size == 0)
     return inode;
+  //printf("\nbefore inode create\n");
   if (inode_write_at(inode, "", 1, initial_size - 1) != 1)
   {
+    //printf("\nafter inode write fail\n");
     inode_remove(inode);
     inode_close(inode);
     return NULL;
   }
-
+  //printf("\nafter inode write success\n");
   return inode;
 }

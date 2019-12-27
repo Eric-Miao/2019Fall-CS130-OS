@@ -363,7 +363,7 @@ read_block (struct inode *inode, off_t offset,
       level = 3;
     }
   }
-
+  //printf("\nin read bolck\n");
   int this_level = 0;
   block_sector_t sector = inode->sector;
   struct cache_line *ce;
@@ -372,6 +372,7 @@ read_block (struct inode *inode, off_t offset,
   struct cache_line *next_ce;
   while (1)
   {
+    //printf("\nsector is %d\n",sector);
     ce = cache_allocate(sector, false);
     data = cache_get_data(ce);
     //printf("\ndata is %d\n",data[0]);
@@ -532,6 +533,7 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
 
   while (size > 0)
   {
+    //printf("\nin while\n");
     /* Sector to write, starting byte offset within sector. */
     int sector_ofs = offset % BLOCK_SECTOR_SIZE;
 
@@ -549,7 +551,6 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
     //printf("\noffset is %d\n",inode->sector);
     if (!read_block(inode, offset, true, &ce))
       break;
-
     uint8_t *data = cache_get_data(ce);
     memcpy(data + sector_ofs, buffer + bytes_written, chunk_size);
     cache_set_dirty(ce);
@@ -560,7 +561,6 @@ inode_write_at (struct inode *inode, const void *buffer_, off_t size,
     offset += chunk_size;
     bytes_written += chunk_size;
   }
-
   /* Extend File. */
   struct cache_line *ce1 = cache_allocate(inode->sector, true);
   struct inode_disk *disk_inode1 = cache_get_data(ce1);

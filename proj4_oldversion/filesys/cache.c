@@ -40,6 +40,7 @@ static struct list ahead_list;
 static struct lock ahead_lock;
 /*indicate whether to read or not*/
 static struct condition ready;
+int index;
 
 static void cache_read_ahead(void *aux UNUSED);
 static void cache_write_period(void *aux UNUSED);
@@ -63,6 +64,7 @@ void cache_init()
         line->dirty = false;
         line->used = false;
     }
+    index = -1;
     /*init cache lock*/
     lock_init(&cache_lock);
     /*initialize read ahead list*/
@@ -88,8 +90,10 @@ struct cache_line *cache_allocate(block_sector_t sector, bool exclusive)
 {
     struct cache_line *line;
     int i = 0;
+begin:
     lock_acquire(&cache_lock);
     /*check if the sector is assigned to a cache line*/
+    //printf("\nin allocate sector: %d\n",sector);
     for (; i < MAX_CACHE; i++)
     {
         line = &cache[i];
@@ -101,6 +105,7 @@ struct cache_line *cache_allocate(block_sector_t sector, bool exclusive)
         }
         /*release the cache lock if we find a cache line with given sector assgned*/
         lock_release(&cache_lock);
+        //printf("\nsr is %d\n",sector);
         /*put exclusive readers/writers into waiting queue*/
         line->waiters++;
         ASSERT(lock_held_by_current_thread(&line->cache_line_lock));
@@ -125,6 +130,7 @@ struct cache_line *cache_allocate(block_sector_t sector, bool exclusive)
         line->waiters--;
         ASSERT(line->sector == sector);
         lock_release(&line->cache_line_lock);
+        //printf("\nreturn 1 %d\n",line->sector);
         return line;
     }
 
@@ -161,13 +167,13 @@ struct cache_line *cache_allocate(block_sector_t sector, bool exclusive)
         /*get the cache line and return*/
         ASSERT(line->waiters == 0);
         lock_release(&line->cache_line_lock);
+        //printf("\nreturn 2 %d\n",line->sector);
         return line;
     }
-    int index = 0;
     /*Use clock algorithm to evict*/
     for (i = 0; i < MAX_CACHE * 2; i++)
     {
-        if (index >= MAX_CACHE)
+        if (++index >= MAX_CACHE)
         {
             index = 0;
         }
@@ -237,28 +243,29 @@ struct cache_line *cache_allocate(block_sector_t sector, bool exclusive)
         /*wake up all waiting reader and writer*/
         cond_broadcast(&line->waiting_queue, &line->cache_line_lock);
         lock_release(&line->cache_line_lock);
+        goto begin;
         /*regain the cache lock*/
-        lock_acquire(&cache_lock);
+        /*lock_acquire(&cache_lock);*/
         /*try to find an empty cache line and assign it to sector after eviction*/
-        for (i = 0; i < MAX_CACHE; i++)
+        /*for (i = 0; i < MAX_CACHE; i++)
         {
             line = &cache[i];
-            lock_acquire(&line->cache_line_lock);
+            lock_acquire(&line->cache_line_lock);*/
             /*skip the cache lines have been assigned*/
-            if (line->sector != (block_sector_t)-1)
+            /*if (line->sector != (block_sector_t)-1)
             {
                 lock_release(&line->cache_line_lock);
                 continue;
             }
-            lock_release(&cache_lock);
+            lock_release(&cache_lock);*/
             /*assign the sector to it and reinitialize its status*/
-            line->sector = sector;
+            /*line->sector = sector;
             line->waiters = 0;
             line->accessed = false;
             line->dirty = false;
-            line->used = false;
+            line->used = false;*/
             /*set its indicator according to the exclusive given*/
-            ASSERT(lock_held_by_current_thread(&line->cache_line_lock));
+            /*ASSERT(lock_held_by_current_thread(&line->cache_line_lock));
             if (exclusive)
             {
                 ASSERT(line->indicator == 0);
@@ -268,18 +275,20 @@ struct cache_line *cache_allocate(block_sector_t sector, bool exclusive)
             {
                 ASSERT(line->indicator >= 0);
                 line->indicator++;
-            }
+            }*/
             /*get the cache line and return*/
-            ASSERT(line->waiters == 0);
+            /*ASSERT(line->waiters == 0);
             lock_release(&line->cache_line_lock);
+            printf("\nreturn 3 %d\n",line->sector);
             return line;
         }
-        index++;
+        index++;*/
     }
     /*try to allocate again after a while to avoid the allocation failure
     caused by asynchronization buecause of different CPU performance*/
     lock_release(&cache_lock);
     timer_msleep(100);
+    //printf("\nbefore allocate again\n");
     cache_allocate(sector, exclusive);
 }
 

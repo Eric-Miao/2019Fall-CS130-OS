@@ -385,11 +385,12 @@ read_block(struct inode *inode, off_t offset,
   struct cache_entry *next_ce;
   while (1)
   {
+    //printf("\nsector is %d\n",sector);
     ce = cache_alloc_and_lock(sector, false);
     data = cache_get_data(ce, false);
-    printf("\ndata is %d\n",data[0]);
+    //printf("\ndata is %d\n",data[0]);
     next_sector = &data[sector_offs[this_level]];
-    printf("\nlocation 0 this level is : %d\n",this_level);
+    //printf("\nlocation 0 this level is : %d\n",this_level);
 
     /* Check whether next level's sector is allocated. */
     if (*next_sector != 0)
@@ -557,7 +558,7 @@ off_t inode_write_at(struct inode *inode, const void *buffer_, off_t size,
       break;
 
     struct cache_entry *ce;
-    printf("\noffset is %d\n",inode->sector);
+    //printf("\noffset is %d\n",inode->sector);
     if (!read_block(inode, offset, true, &ce))
       break;
 

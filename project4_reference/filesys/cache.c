@@ -124,6 +124,7 @@ cache_alloc_and_lock(block_sector_t sector, bool exclusive)
 begin:
 	/* Acquire global lock first .*/
 	lock_acquire(&cache_lock);
+	//printf("\nbefore allocate %d \n",sector);
 	/* Sector may have been cached, check it .*/
 	for (i = 0; i < CACHE_SIZE; i++)
 	{
@@ -138,7 +139,7 @@ begin:
 		/* No longer need the global lock 
 		for we hold lock l. */
 		lock_release(&cache_lock);
-
+		//printf("\nsr is %d\n",sector);
 		/* Acquire read/write lock. */
 		ce->waiters++;
 		shared_lock_acquire(&ce->sl, exclusive);
@@ -147,6 +148,7 @@ begin:
 		ASSERT(ce->sector == sector);
 
 		lock_release(&ce->l);
+		//printf("\nreturn 1 %d\n",ce->sector);
 		return ce;
 	}
 
@@ -177,6 +179,7 @@ begin:
 		/* We hold lock l now, so no one can wait for this slot. */
 		ASSERT(ce->waiters == 0);
 		lock_release(&ce->l);
+		//printf("\nreturn 1 %d\n",ce->sector);
 		return ce;
 	}
 
@@ -237,6 +240,7 @@ begin:
 		lock_release(&ce->l);
 
 		/* Try again. */
+		//printf("\nreturn 3\n");
 		goto begin;
 	}
 

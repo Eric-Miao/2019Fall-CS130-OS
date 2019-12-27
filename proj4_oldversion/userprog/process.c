@@ -29,6 +29,7 @@ struct file_to_fd
 {
   int f_des;               /*file descriptor*/
   struct file *f_addr_ptr; /*file address*/
+  struct dir *d_addr_ptr;
   struct list_elem f_list; /*fd list of thread*/
 };
 
@@ -211,6 +212,7 @@ void process_exit(void)
     el = list_pop_front(&cur->file_des);
     struct file_to_fd *lk = list_entry(el, struct file_to_fd, f_list);
     file_close(lk->f_addr_ptr);
+    dir_close(lk->d_addr_ptr);
     list_remove(el);
     free(lk);
   }
