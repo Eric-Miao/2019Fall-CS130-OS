@@ -170,7 +170,9 @@ a doublly_indirect pointer.
 In "threads/thread.h" newly added struct:
 struct thread
 {
+    ......
     struct dir *directory   /*record the working directory of current thread*/
+    ......
 };
 
 
@@ -178,6 +180,28 @@ struct thread
 
 >> B2: Describe your code for traversing a user-specified path.  How
 >> do traversals of absolute and relative paths differ?
+The function is called get_directory_from_path.
+We require a path, an string to store the parsed filename and the dir the filename
+belongs to.
+We first read in the path, check if it's absolute path, if so, we open the root
+otherwise we open the working direct of the process, if it doesn't have one, we open
+and set the root as working dir for it.
+
+Then we parse the filepath from the beginning, each time a string before the next '/'
+check if there is the required named file or dir in the current  dir and if the parsed
+filename is a dir name because we will go deeper into dir later. Either case fails will 
+lead to a NULL return.
+
+With the previous name parsed, we also check if we are at the last dir before the last
+dir/file name which is also the required open/create/remove name, if so, we return after
+we change dir to this dir and return here.
+
+Before actually return the dir of the desired file/dir, we copy the name required into 
+the filename string past into the function.
+
+The difference between traversals of absolute and relative paths is whether the parse
+start from the root or the working dir of the caller process, as mentioned above.
+
 
 ---- SYNCHRONIZATION ----
 
