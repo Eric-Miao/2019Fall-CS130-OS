@@ -240,6 +240,7 @@ begin:
         cond_broadcast(&line->waiting_queue, &line->cache_line_lock);
         lock_release(&line->cache_line_lock);
         goto begin;
+    }
     /*try to allocate again after a while to avoid the allocation failure
     caused by asynchronization buecause of different CPU performance*/
     lock_release(&cache_lock);

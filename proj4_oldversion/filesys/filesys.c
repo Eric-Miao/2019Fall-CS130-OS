@@ -258,41 +258,19 @@ get_dir_from_path(char *file_name, char *full_path)
     return NULL;
   }
 
-  // int len = strlen(full_path);
-  // char *last = fp + len - 1;
-  // while (last >= fp && *last == '/')
-  // {
-  //   --last;
-  // }
-  // ++last;
-  // /* We reach the beginning from the end. */
-  // if (last == fp)
-  // {
-  //   // root directory
-  //   return NULL;
-  // }
-  // /* Set a new end.  */
-  // *last = '\0';
-  // /* Return back to the paresed new end. */
-  // --last;
-
-  // /* Here we extract the last part of the path, which is
-  // either a path name or a file name out first, and the rest shall
-  // all be to path to this final name. */
-  // while (last >= fp && *last != '/')
-  //   --last;
-  // ++last;
-  // int len_filename = strlen(last);
-  // strlcpy(file_name, last, len_filename + 1);
-  // *last = '\0';
+  int len = strlen(full_path);
+  char *last = fp + len - 1;
+  while (last >= fp && *last == '/')
+  {
+    --last;
+  }
+  ++last;
   /* Parse the full_path in to string all the way until either 0: no mroe string -1: failure. 
     string is the next level name, fp is what left.*/
   while ((status = extract_next_string(string, &fp)) == 1)
   {
     /* Use temp_path to taken down the fp temperory, and parse one more time. */
-    temp_path = fp;
-    /* No more string to path */
-    if (extract_next_string(temp_name, &temp_path) == 0)
+    if (fp == last)
       break;
 
     /* find no file/dir named string in the give dir. */
@@ -314,58 +292,6 @@ get_dir_from_path(char *file_name, char *full_path)
   }
   strlcpy(file_name, string, NAME_MAX + 1);
   return dir;
-
-  // int len = strlen(full_path);
-  // char *last = fp + len - 1;
-  // bool must_dir = (*last == '/');
-  // while (last >= fp && *last == '/')
-  // {
-  //   --last;
-  // }
-  // ++last;
-  // /* We reach the beginning from the end. */
-  // if (last == fp)
-  // {
-  //   // root directory
-  //   return NULL;
-  // }
-  // /* Set a new end.  */
-  // *last = '\0';
-  // /* Return back to the paresed new end. */
-  // --last;
-  // /* Here we extract the last part of the path, which is
-  // either a path name or a file name out first, and the rest shall
-  // all be to path to this final name. */
-  // while (last >= fp && *last != '/')
-  //   --last;
-  // ++last;
-  // size_t len_filename = strlen(last);
-  // ASSERT(len_filename > 0);
-
-  // char *token, *save_ptr;
-  // for (token = strtok_r(fp, "/", &save_ptr);
-  //      token != last && token != NULL;
-  //      token = strtok_r(NULL, "/", &save_ptr))
-  // {
-  //   struct inode *inode;
-  //   if (!dir_lookup(dir, token, &inode))
-  //   {
-  //     dir_close(dir);
-  //     return NULL;
-  //   }
-
-  //   if (!inode_is_dir(inode))
-  //   {
-  //     inode_close(inode);
-  //     return NULL;
-  //   }
-
-  //   dir_close(dir);
-  //   dir = dir_open(inode);
-  // }
-
-  // strlcpy(file_name, last, len_filename + 1);
-  // return dir;
 }
 
 /* Check if the input path is a root dir, return true if so. */
@@ -401,54 +327,3 @@ file_create(block_sector_t inode_sector, off_t initial_size)
   }
   return inode;
 }
-
-// char *last = fp + len - 1;
-// bool must_dir = (*last == '/');
-// while (last >= fp && *last == '/')
-// {
-//   --last;
-// }
-// ++last;
-// /* We reach the beginning from the end. */
-// if (last == fp)
-// {
-//   // root directory
-//   return NULL;
-// }
-// /* Set a new end.  */
-// *last = '\0';
-// /* Return back to the paresed new end. */
-// --last;
-// /* Here we extract the last part of the path, which is 
-//   either a path name or a file name out first, and the rest shall
-//   all be to path to this final name. */
-// while (last >= fp && *last != '/')
-//   --last;
-// ++last;
-// size_t len_filename = strlen(last);
-// ASSERT(len_filename > 0);
-
-// char *token, *save_ptr;
-// for (token = strtok_r(fp, "/", &save_ptr);
-//      token != last && token != NULL;
-//      token = strtok_r(NULL, "/", &save_ptr))
-// {
-//   struct inode *inode;
-//   if (!dir_lookup(dir, token, &inode))
-//   {
-//     dir_close(dir);
-//     return NULL;
-//   }
-
-//   if (!inode_is_dir(inode))
-//   {
-//     inode_close(inode);
-//     return NULL;
-//   }
-
-//   dir_close(dir);
-//   dir = dir_open(inode);
-// }
-
-//   strlcpy(file_name, last, len_filename + 1);
-//   return dir;
