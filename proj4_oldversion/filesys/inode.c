@@ -25,8 +25,8 @@
 /* Number of direct data sectors. */
 #define DATA_BLOCK_CNT (BLOCK_PTR_CNT - INDIRECT_BLOCK_CNT - DOUBLE_INDIRECT_BLOCK_CNT)
 /* Max length of inode, in bytes .*/
-#define INODE_MAX_LENGTH ((DATA_BLOCK_CNT +                                               \
-                           SECTOR_PTR_CNT * INDIRECT_BLOCK_CNT +                          \
+#define INODE_MAX_LENGTH ((DATA_BLOCK_CNT + \
+                           SECTOR_PTR_CNT * INDIRECT_BLOCK_CNT + \
                            SECTOR_PTR_CNT * SECTOR_PTR_CNT * DOUBLE_INDIRECT_BLOCK_CNT) * \
                           BLOCK_SECTOR_SIZE)
 
@@ -36,7 +36,7 @@ struct inode_disk
 {
   block_sector_t sectors[BLOCK_PTR_CNT]; /* Sectors. */
   off_t length;                          /* File size in bytes. */
-  int type;                              /* File : 0 ; dir : 1 */
+  int is_dir;                              /* File : 0 ; dir : 1 */
   unsigned magic;                        /* Magic number. */
   uint32_t unused[META_PTR_CNT - 3];
 };
@@ -98,12 +98,14 @@ struct inode *inode_create(block_sector_t sector, off_t length, bool is_dir)
 
   cl = cache_allocate(sector, true);
   disk_inode = cache_get_zero(cl);
+  /* We give the new inode a length of 0 because we will extend it later when we want to write it beyond current EOF */
   disk_inode->length = 0;
-  disk_inode->type = is_dir ? 1 : 0;
+  disk_inode->is_dir = is_dir ? 1 : 0;
   disk_inode->magic = INODE_MAGIC;
   cache_set_dirty(cl);
   cache_wake(cl, true);
 
+  /* Here we open the node that we just created and allocate new sapce in memory for it. */
   struct inode *inode = inode_open(sector);
   if (inode == NULL)
   {
@@ -120,9 +122,9 @@ bool inode_is_dir(struct inode *inode)
     return false;
   struct cache_line *cl = cache_allocate(inode->sector, false);
   struct inode_disk *disk_inode = cache_get_data(cl);
-  int type = disk_inode->type;
+  int is_dir = disk_inode->is_dir;
   cache_wake(cl, false);
-  return (type == 1);
+  return (is_dir == 1);
 }
 /* Reads an inode from SECTOR
    and returns a `struct inode' that contains it.

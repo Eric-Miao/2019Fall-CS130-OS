@@ -27,8 +27,8 @@ void filesys_init(bool format)
     PANIC("No file system device found, can't initialize file system.");
 
   inode_init();
-  cache_init();
   free_map_init();
+  cache_init();
 
   if (format)
     do_format();
@@ -208,11 +208,11 @@ extract_next_string(char *string, char **full_path)
   {
     string[length] = *path;
     length++;
-    /* Name is too long to fit in one file. */
-    if (length > NAME_MAX)
-    {
-      return -1;
-    }
+    // /* Name is too long to fit in one file. */
+    // if (length > NAME_MAX)
+    // {
+    //   return -1;
+    // }
     path++;
   }
   /* Substitude the original path with a new shorten, post-extracted path. */
@@ -308,22 +308,17 @@ static bool
 is_root(const char *path)
 {
   //printf("\nin is root\n");
-  char temp_name[NAME_MAX + 1];
-  //char *temp_name;
   char *temp_path = (char *)path;
   if (path[0] == '/')
   {
-    //printf("\nin this line\n");
-    if (extract_next_string(temp_name, &temp_path) == 0)
-    {
+    while (*temp_path == '/')
+      temp_path++;
+    /* From the head all the way to the end is '/' */
+    if (*temp_path == '\0')
       return true;
-    }
     else
-    {
       return false;
-    }
   }
-  //printf("\nin this line\n");
   return false;
 }
 
@@ -346,3 +341,168 @@ file_create(block_sector_t inode_sector, off_t initial_size)
   //printf("\nafter inode write success\n");
   return inode;
 }
+
+// /* Parse the given pathname into filename and dir return the status of paring */
+// int parse_pathname(const char *pathname, struct dir **dir, char **filename)
+// {
+//   *dir = NULL;
+//   *filename = NULL;
+
+//   size_t len = strlen(pathname);
+//   if (len == 0)
+//     return -1;
+
+//   char *path_buf = malloc(len + 1);
+//   if (!path_buf)
+//     return -1;
+//   memcpy(path_buf, pathname, len + 1);
+
+//   bool abso = (*path_buf == '/'); // absolute path starts with '/'
+//   // relative directories always fail in removed cwd
+//   if (!abso && dir_cwd_removed())
+//   {
+//     return -1;
+//   }
+
+//   char *last = path_buf + len - 1;
+//   bool must_dir = (*last == '/');
+//   while (last >= path_buf && *last == '/')
+//   {
+//     --last;
+//   }
+//   ++last;
+//   if (last == path_buf)
+//   {
+//     // root directory
+//     free(path_buf);
+//     return 2;
+//   }
+
+//   // extract filename
+//   *last = '\0';
+//   --last; // should still >= path_buf
+//   while (last >= path_buf && *last != '/')
+//     --last;
+//   ++last;
+
+//   // the length of filename should be positive
+//   size_t len_filename = strlen(last);
+//   ASSERT(len_filename > 0);
+
+//   struct dir *cd = abso ? dir_open_root() : dir_open_cwd();
+//   char *token, *save_ptr;
+//   for (token = strtok_r(path_buf, "/", &save_ptr);
+//        token != last && token != NULL;
+//        token = strtok_r(NULL, "/", &save_ptr))
+//   {
+//     struct inode *inode;
+//     if (!dir_lookup(cd, token, &inode))
+//     {
+//       dir_close(cd);
+//       free(path_buf);
+//       return -1;
+//     }
+//     dir_close(cd);
+//     cd = dir_open(inode);
+//   }
+//   *dir = cd;
+
+//   *filename = malloc(len_filename + 1);
+//   if (!*filename)
+//   {
+//     free(path_buf);
+//     return -1;
+//   }
+//   memcpy(*filename, last, len_filename + 1);
+//   free(path_buf);
+//   return must_dir ? 1 : 0;
+// }
+// char *last = temp_path + len - 1;
+// bool must_dir = (*last == '/');
+// while (last >= temp_path && *last == '/')
+// {
+//   --last;
+// }
+// ++last;
+// /* We reach the beginning from the end. */
+// if (last == temp_path)
+// {
+//   // root directory
+//   return NULL;
+// }
+// /* Set a new end.  */
+// *last = '\0';
+// /* Return back to the paresed new end. */
+// --last;
+// /* Here we extract the last part of the path, which is 
+//   either a path name or a file name out first, and the rest shall
+//   all be to path to this final name. */
+// while (last >= temp_path && *last != '/')
+//   --last;
+// ++last;
+// size_t len_filename = strlen(last);
+// // printf("string lenth is %d\n\n\n\n",len_filename);
+// ASSERT(len_filename > 0);
+
+/* Parse the full_path in to string all the way until either 0: no mroe string -1: failure. 
+    string is the next level name, fp is what left.*/
+// while ((status = extract_next_string(string, &fp)) == 1)
+// {
+//   /* Use temp_path to taken down the fp temperory, and parse one more time. */
+//   temp_path = fp;
+//   /* No more string to path so that this path is a dir*/
+//   if (extract_next_string(temp_name, &temp_path) == 0)
+//     break;
+
+//   /* find no file/dir named string in the give dir. */
+//   if (dir_lookup(dir, string, &inode) == false)
+//   {
+//     dir_close(dir);
+//     return NULL;
+//   }
+//   /* The next string is the filename not dir name. */
+//   if (!inode_is_dir(inode))
+//   {
+//     inode_close(inode);
+//     return NULL;
+//   }
+
+//   /* Close current dir and go one step deep. */
+//   dir_close(dir);
+//   dir = dir_open(inode);
+// }
+// char *token, *save_ptr;
+// for (token = strtok_r(temp_path, "/", &save_ptr);
+//      token != last && token != NULL;
+//      token = strtok_r(NULL, "/", &save_ptr))
+// {
+//   struct inode *inode;
+//   if (!dir_lookup(dir, token, &inode))
+//   {
+//     dir_close(dir);
+//     return NULL;
+//   }
+
+//   if (!inode_is_dir(inode))
+//   {
+//     inode_close(inode);
+//     return NULL;
+//   }
+
+//   dir_close(dir);
+//   dir = dir_open(inode);
+// }
+
+// // if (status == -1)
+// // {
+// //   dir_close(dir);
+// // }
+// if (len_filename > NAME_MAX)
+// {
+//   dir_close(dir);
+// }
+// else
+// {
+//   strlcpy(file_name, last, len_filename + 1);
+//   return dir;
+// }
