@@ -213,8 +213,10 @@ extract_next_string(char *string, char **full_path)
   return 1;
 }
 
-/* This is actually getting the last dir from the full_path, which in my opinion 
-can be substituded by the way ref2 implemented. */
+/* This is actually getting the last dir from the full_path
+We require a path, an string to store the parsed filename and the dir the filename
+belongs to.
+ */
 static struct dir *
 get_dir_from_path(char *file_name, char *full_path)
 {
@@ -255,6 +257,34 @@ get_dir_from_path(char *file_name, char *full_path)
     dir_close(dir);
     return NULL;
   }
+
+  // int len = strlen(full_path);
+  // char *last = fp + len - 1;
+  // while (last >= fp && *last == '/')
+  // {
+  //   --last;
+  // }
+  // ++last;
+  // /* We reach the beginning from the end. */
+  // if (last == fp)
+  // {
+  //   // root directory
+  //   return NULL;
+  // }
+  // /* Set a new end.  */
+  // *last = '\0';
+  // /* Return back to the paresed new end. */
+  // --last;
+
+  // /* Here we extract the last part of the path, which is
+  // either a path name or a file name out first, and the rest shall
+  // all be to path to this final name. */
+  // while (last >= fp && *last != '/')
+  //   --last;
+  // ++last;
+  // int len_filename = strlen(last);
+  // strlcpy(file_name, last, len_filename + 1);
+  // *last = '\0';
   /* Parse the full_path in to string all the way until either 0: no mroe string -1: failure. 
     string is the next level name, fp is what left.*/
   while ((status = extract_next_string(string, &fp)) == 1)
@@ -338,6 +368,7 @@ get_dir_from_path(char *file_name, char *full_path)
   // return dir;
 }
 
+/* Check if the input path is a root dir, return true if so. */
 static bool
 is_root(const char *path)
 {

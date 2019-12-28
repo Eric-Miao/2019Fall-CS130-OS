@@ -262,7 +262,7 @@ done:
   inode_close(inode);
   return success;
 }
-
+/*open the current working directory*/
 struct dir *dir_open_current ()
 {
     return dir_open (inode_reopen (thread_current()->directory->inode));

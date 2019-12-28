@@ -240,46 +240,6 @@ begin:
         cond_broadcast(&line->waiting_queue, &line->cache_line_lock);
         lock_release(&line->cache_line_lock);
         goto begin;
-        /*regain the cache lock*/
-        /*lock_acquire(&cache_lock);*/
-        /*try to find an empty cache line and assign it to sector after eviction*/
-        /*for (i = 0; i < MAX_CACHE; i++)
-        {
-            line = &cache[i];
-            lock_acquire(&line->cache_line_lock);*/
-            /*skip the cache lines have been assigned*/
-            /*if (line->sector != (block_sector_t)-1)
-            {
-                lock_release(&line->cache_line_lock);
-                continue;
-            }
-            lock_release(&cache_lock);*/
-            /*assign the sector to it and reinitialize its status*/
-            /*line->sector = sector;
-            line->waiters = 0;
-            line->accessed = false;
-            line->dirty = false;
-            line->used = false;*/
-            /*set its indicator according to the exclusive given*/
-            /*ASSERT(lock_held_by_current_thread(&line->cache_line_lock));
-            if (exclusive)
-            {
-                ASSERT(line->indicator == 0);
-                line->indicator = -1;
-            }
-            else
-            {
-                ASSERT(line->indicator >= 0);
-                line->indicator++;
-            }*/
-            /*get the cache line and return*/
-            /*ASSERT(line->waiters == 0);
-            lock_release(&line->cache_line_lock);
-            printf("\nreturn 3 %d\n",line->sector);
-            return line;
-        }
-        index++;*/
-    }
     /*try to allocate again after a while to avoid the allocation failure
     caused by asynchronization buecause of different CPU performance*/
     lock_release(&cache_lock);

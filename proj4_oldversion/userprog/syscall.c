@@ -748,6 +748,7 @@ int inumber(int fd)
   {
     return -1;
   }
+  /*check if the fd is related to a file or a dir*/
   if (target->f_addr_ptr == NULL)
   {
     inode = dir_get_inode(target->d_addr_ptr);
