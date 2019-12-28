@@ -19,5 +19,5 @@ off_t inode_write_at(struct inode *, const void *, off_t size, off_t offset);
 void inode_deny_write(struct inode *);
 void inode_allow_write(struct inode *);
 off_t inode_length(const struct inode *);
-int inode_open_cnt(struct inode *inode);
+bool is_inode_open(struct inode *inode);
 #endif /* filesys/inode.h */

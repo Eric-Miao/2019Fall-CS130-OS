@@ -629,11 +629,11 @@ void inode_release_lock(struct inode *inode)
   lock_release(&inode->inode_lock);
 }
 
-int inode_open_cnt(struct inode *inode)
+bool  is_inode_open(struct inode *inode)
 {
   int value;
   lock_acquire(&lock_open_inodes);
   value = inode->open_cnt;
   lock_release(&lock_open_inodes);
-  return value;
+  return (value <= 1);
 }

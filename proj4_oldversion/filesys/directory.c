@@ -231,7 +231,7 @@ bool dir_remove(struct dir *dir, const char *name)
   if (inode_is_dir(inode))
   {
     /*can't remove the directory if it's opened */
-    if (inode_open_cnt(inode) > 1)
+    if (!is_inode_open(inode))
     {
       goto done;
     } 
