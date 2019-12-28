@@ -1,6 +1,7 @@
 #include "tests/filesys/seq-test.h"
 #include <random.h>
 #include <syscall.h>
+#include <string.h>
 #include "tests/lib.h"
 
 void 
