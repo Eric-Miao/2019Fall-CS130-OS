@@ -1,4 +1,4 @@
-       	             +-------------------------+
+       	 +-------------------------+
 		     | CS 140                  |
 		     | PROJECT 4: FILE SYSTEMS |
 		     | DESIGN DOCUMENT         |
@@ -8,18 +8,17 @@
 
 >> Fill in the names and email addresses of your group members.
 
-FirstName LastName <email@domain.example>
-FirstName LastName <email@domain.example>
-FirstName LastName <email@domain.example>
+Yuxin Miao <miaoyx@shanghaitech.edu.cn>
+Fan Zhang <zhangfan5@shanghaitech.edu.cn>
 
 ---- PRELIMINARIES ----
 
 >> If you have any preliminary comments on your submission, notes for the
 >> TAs, or extra credit, please give them here.
-
 >> Please cite any offline or online sources you consulted while
 >> preparing your submission, other than the Pintos documentation, course
 >> text, lecture notes, and course staff.
+https://static1.squarespace.com/static/5b18aa0955b02c1de94e4412/t/5b85fad2f950b7b16b7a2ed6/1535507195196/Pintos+Guide
 
 		     INDEXED AND EXTENSIBLE FILES
 		     ============================
@@ -30,13 +29,80 @@ FirstName LastName <email@domain.example>
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+---------------- filesys.c ------------------
+
+#define SECTOR_PTR_CNT (BLOCK_SECTOR_SIZE / sizeof(block_sector_t))
+/* Number of meta data. */
+#define META_PTR_CNT (SECTOR_PTR_CNT - BLOCK_PTR_CNT)
+/* Number of data sectors. */
+#define BLOCK_PTR_CNT 12
+/* Number of indirect data sectors. */
+#define INDIRECT_BLOCK_CNT 1
+/* Number of double indirect data sectors. */
+#define DOUBLE_INDIRECT_BLOCK_CNT 1
+/* Number of direct data sectors. */
+#define DATA_BLOCK_CNT (BLOCK_PTR_CNT - INDIRECT_BLOCK_CNT - DOUBLE_INDIRECT_BLOCK_CNT)
+/* Max length of inode, in bytes .*/
+#define INODE_MAX_LENGTH ((DATA_BLOCK_CNT + \
+                           SECTOR_PTR_CNT * INDIRECT_BLOCK_CNT + \
+                           SECTOR_PTR_CNT * SECTOR_PTR_CNT * DOUBLE_INDIRECT_BLOCK_CNT) * \
+                          BLOCK_SECTOR_SIZE)
+
+struct inode_disk
+{
+  block_sector_t sectors[BLOCK_PTR_CNT]; /* Sectors. */
+  off_t length;                          /* File size in bytes. */
+  int is_dir;                            /* File : 0 ; dir : 1 */
+  unsigned magic;                        /* Magic number. */
+  uint32_t unused[META_PTR_CNT - 3];
+};
+
+struct inode
+{
+  struct list_elem elem;  /* Element in inode list. */
+  block_sector_t sector;  /* Sector number of disk location. */
+  int open_cnt;           /* Number of openers. */
+  bool removed;           /* True if deleted, false otherwise. */
+  struct lock inode_lock; /* Lock used for directory. */
+
+  int being_written;            /* 0: writes ok, >0: deny writes. */
+  struct lock writing_lock;     /* Lock for deny write. */
+  struct condition writer_cond; /* Condition indicating no writers. */
+  int writers;                  /* Can only deny write when there's no writer. */
+};
+
 >> A2: What is the maximum size of a file supported by your inode
 >> structure?  Show your work.
+
+In our disk inode, we use an array of pointers to take place of previous 
+implementation. In our array we have 10 direct data pointers, 1 indirect
+pointer and 1 doublly_indirect pointer. 
+There are BLOCK_SECTOR_SIZE/sizeof(block_sector_t) = 128 pointers in an
+inode_disk struct.
+So we can support 10*512+128*512+128*128*512 = 8459264Bytes which aproximately
+is 8MB.
 
 ---- SYNCHRONIZATION ----
 
 >> A3: Explain how your code avoids a race if two processes attempt to
 >> extend a file at the same time.
+
+In our implementation, a process can extend a file in an unit of cache line
+which means even a process wants to extends a lot of bytes beyond the EOF, it
+can only accomplish this cache line by cache line or one disk_inode in other words.
+
+We give every cache and inode a lock, so when any process wants to access a cache line 
+it has to acquire this lock first. Then we do a condition seperations, if this is an 
+operation except for extension, which as described in the documentation, should all 
+multiple processes do work simultaneous, then we wake all the process waiting for this 
+cache line before we do any work. Otherwise, if this is an extension operation, we will
+hole the lock until we finish the extension.
+
+Further, we have a double check for extension. It only triggers extension only when the 
+belonging functions is called by the write_at functions and detects the sector that we 
+are intending to write has nothing in. If only above should we allocate a new place for 
+this sector and set zeros. So we double check the sector we are going to allocate at if 
+the sector is still blank and waiting for allocation.
 
 >> A4: Suppose processes A and B both have file F open, both
 >> positioned at end-of-file.  If A reads and B writes F at the same
@@ -45,12 +111,32 @@ FirstName LastName <email@domain.example>
 >> nonzero data, A is not allowed to see all zeros.  Explain how your
 >> code avoids this race.
 
+We seperate the actual read functions on block_sectors into a seperate function
+called read_block, only when the write_at calls this function do we allow the 
+process to do operation beyond EOF, in this case, it's extension zeros and write
+new data into the sector if any. So if a read_at function calls the read_block
+we return upon EOF so that process-A will not read anything except NULL. 
+
 >> A5: Explain how your synchronization design provides "fairness".
 >> File access is "fair" if readers cannot indefinitely block writers
 >> or vice versa.  That is, many processes reading from a file cannot
 >> prevent forever another process from writing the file, and many
 >> processes writing to a file cannot prevent another process forever
 >> from reading the file.
+
+We read data in unit of cache_line, that means if a files is seperated into 
+multiple inode_sector to store, only the one that is required will have its 
+lock acquired by the caller function, and the rest cache line is free to do
+any modification.
+
+Also, we only hold lock for a cache line thoughout extension operation, at
+any other we will release the lock so that any one who want to read or write
+can gain the lock and do their operations.
+
+TO BE MORE CLEAR: As mentioned above, the lock on cache_line is acquired every
+time a process access this cache line, between finishing acquiring the cache line
+and do the desired operation, we check the operation, if it's not extension, we
+relase the lock immediately before operation.
 
 ---- RATIONALE ----
 
@@ -59,6 +145,18 @@ FirstName LastName <email@domain.example>
 >> indirect blocks?  If not, why did you choose an alternative inode
 >> structure, and what advantages and disadvantages does your
 >> structure have, compared to a multilevel index?
+Yes we use a multilevel index of 3 levels. We have 10 direct data pointers, 1 indirect
+pointer and 1 doublly_indirect pointer.  So we can support aproximately 8MB.
+
+As suggested on the slides, the combination is 12+1+1 so that we believe a 10+1+1
+combination is enough for the pintos implementation. This combination is also
+recommended in the USC pintos guide of their course project. 
+
+We also prepared to extend the number of indirect data pointer and reduce the double
+indirect pointer. This can make the process of accessing the data much faster because
+it will save a 2nd-order scale of access operation. 
+But we afraid the space is not enough for a super large file so we hold on to having 
+a doublly_indirect pointer.
 
 			    SUBDIRECTORIES
 			    ==============
