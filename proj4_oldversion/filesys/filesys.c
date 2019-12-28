@@ -402,92 +402,92 @@ file_create(block_sector_t inode_sector, off_t initial_size)
 //   free(path_buf);
 //   return must_dir ? 1 : 0;
 // }
-// char *last = temp_path + len - 1;
-// bool must_dir = (*last == '/');
-// while (last >= temp_path && *last == '/')
-// {
-//   --last;
-// }
-// ++last;
-// /* We reach the beginning from the end. */
-// if (last == temp_path)
-// {
-//   // root directory
-//   return NULL;
-// }
-// /* Set a new end.  */
-// *last = '\0';
-// /* Return back to the paresed new end. */
-// --last;
-// /* Here we extract the last part of the path, which is 
-//   either a path name or a file name out first, and the rest shall
-//   all be to path to this final name. */
-// while (last >= temp_path && *last != '/')
-//   --last;
-// ++last;
-// size_t len_filename = strlen(last);
-// // printf("string lenth is %d\n\n\n\n",len_filename);
-// ASSERT(len_filename > 0);
+char *last = temp_path + len - 1;
+bool must_dir = (*last == '/');
+while (last >= temp_path && *last == '/')
+{
+  --last;
+}
+++last;
+/* We reach the beginning from the end. */
+if (last == temp_path)
+{
+  // root directory
+  return NULL;
+}
+/* Set a new end.  */
+*last = '\0';
+/* Return back to the paresed new end. */
+--last;
+/* Here we extract the last part of the path, which is 
+  either a path name or a file name out first, and the rest shall
+  all be to path to this final name. */
+while (last >= temp_path && *last != '/')
+  --last;
+++last;
+size_t len_filename = strlen(last);
+// printf("string lenth is %d\n\n\n\n",len_filename);
+ASSERT(len_filename > 0);
 
 /* Parse the full_path in to string all the way until either 0: no mroe string -1: failure. 
     string is the next level name, fp is what left.*/
-// while ((status = extract_next_string(string, &fp)) == 1)
-// {
-//   /* Use temp_path to taken down the fp temperory, and parse one more time. */
-//   temp_path = fp;
-//   /* No more string to path so that this path is a dir*/
-//   if (extract_next_string(temp_name, &temp_path) == 0)
-//     break;
+while ((status = extract_next_string(string, &fp)) == 1)
+{
+  /* Use temp_path to taken down the fp temperory, and parse one more time. */
+  temp_path = fp;
+  /* No more string to path so that this path is a dir*/
+  if (extract_next_string(temp_name, &temp_path) == 0)
+    break;
 
-//   /* find no file/dir named string in the give dir. */
-//   if (dir_lookup(dir, string, &inode) == false)
-//   {
-//     dir_close(dir);
-//     return NULL;
-//   }
-//   /* The next string is the filename not dir name. */
-//   if (!inode_is_dir(inode))
-//   {
-//     inode_close(inode);
-//     return NULL;
-//   }
+  /* find no file/dir named string in the give dir. */
+  if (dir_lookup(dir, string, &inode) == false)
+  {
+    dir_close(dir);
+    return NULL;
+  }
+  /* The next string is the filename not dir name. */
+  if (!inode_is_dir(inode))
+  {
+    inode_close(inode);
+    return NULL;
+  }
 
-//   /* Close current dir and go one step deep. */
-//   dir_close(dir);
-//   dir = dir_open(inode);
-// }
-// char *token, *save_ptr;
-// for (token = strtok_r(temp_path, "/", &save_ptr);
-//      token != last && token != NULL;
-//      token = strtok_r(NULL, "/", &save_ptr))
-// {
-//   struct inode *inode;
-//   if (!dir_lookup(dir, token, &inode))
-//   {
-//     dir_close(dir);
-//     return NULL;
-//   }
+  /* Close current dir and go one step deep. */
+  dir_close(dir);
+  dir = dir_open(inode);
+}
+char *token, *save_ptr;
+for (token = strtok_r(temp_path, "/", &save_ptr);
+     token != last && token != NULL;
+     token = strtok_r(NULL, "/", &save_ptr))
+{
+  struct inode *inode;
+  if (!dir_lookup(dir, token, &inode))
+  {
+    dir_close(dir);
+    return NULL;
+  }
 
-//   if (!inode_is_dir(inode))
-//   {
-//     inode_close(inode);
-//     return NULL;
-//   }
+  if (!inode_is_dir(inode))
+  {
+    inode_close(inode);
+    return NULL;
+  }
 
-//   dir_close(dir);
-//   dir = dir_open(inode);
-// }
+  dir_close(dir);
+  dir = dir_open(inode);
+}
 
-// // if (status == -1)
-// // {
-// //   dir_close(dir);
-// // }
-// if (len_filename > NAME_MAX)
-// {
-//   dir_close(dir);
-// }
-// else
-// {
-//   strlcpy(file_name, last, len_filename + 1);
-//   return dir;
-// }
+if (status == -1)
+{
+  dir_close(dir);
+}
+if (len_filename > NAME_MAX)
+{
+  dir_close(dir);
+}
+else
+{
+  strlcpy(file_name, last, len_filename + 1);
+  return dir;
+}
