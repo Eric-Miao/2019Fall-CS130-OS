@@ -167,6 +167,13 @@ a doublly_indirect pointer.
 >> `struct' member, global or static variable, `typedef', or
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
+In "threads/thread.h" newly added struct:
+struct thread
+{
+    struct dir *directory   /*record the working directory of current thread*/
+};
+
+
 ---- ALGORITHMS ----
 
 >> B2: Describe your code for traversing a user-specified path.  How
@@ -179,15 +186,31 @@ a doublly_indirect pointer.
 >> should succeed, as should only one of two simultaneous attempts to
 >> create a file with the same name, and so on.
 
+When we do directory operations we will first acquire an inode lock that
+prevent other processes from accessing this inode that directory has.The
+lock will be released after all operations is done.
+
 >> B5: Does your implementation allow a directory to be removed if it
 >> is open by a process or if it is in use as a process's current
 >> working directory?  If so, what happens to that process's future
 >> file system operations?  If not, how do you prevent it?
 
+NO,once we open or reopen a inode its open_cnt indicater will be increased
+by one. We have a function that if the inode's open_cnt is larger than one
+(one for directory remove itself) it will return false and if so we won't
+let dir_remove remove the directory.
+
 ---- RATIONALE ----
 
 >> B6: Explain why you chose to represent the current directory of a
 >> process the way you did.
+
+we choose to initiate the current thread's working directory in thread init by
+calling dir_open_current and init the initial thread by create a function that
+open the root directory when we first init everthing in init.c. And we close 
+the dir when process is exited. We choose this way since start_process can only
+take one viod arguement and we already take the file name for that. It is hard
+to keep every threads with right working directory when create a new thread.
 
 			     BUFFER CACHE
 			     ============
@@ -199,6 +222,7 @@ a doublly_indirect pointer.
 >> enumeration.  Identify the purpose of each in 25 words or less.
 
 In "filesys/cache.c" newly defined struct member:
+
 struct cache_line
 {
     uint8_t data[BLOCK_SECTOR_SIZE]; 	/*data in this cache line*/
@@ -232,6 +256,7 @@ static struct list ahead_list;
 static struct lock ahead_lock;
 /*indicate whether to read or not*/
 static struct condition ready;
+/*index indicator used in eviction*/
 int index;
 
 
@@ -240,9 +265,36 @@ int index;
 >> C2: Describe how your cache replacement algorithm chooses a cache
 >> block to evict.
 
+We use clock algorithm like the one we use in project 3 for frame eviction.
+When we first get the sector for allocation we will check if this sector is
+already assigned with a cache line. If not we will check if there are any 
+empty cache line for allocation. If both of these two case are false we will
+go throught the whole cache twice use clock algorithm for eviction. For first
+go through we set access bool indicator to false and go through again if one
+cache line is still with false access indicator we will evict it and if it is
+dirty we will write it back to the sector it belongs to.
+
 >> C3: Describe your implementation of write-behind.
 
+A cache line will be write back to the disk only when the filesys_close() is 
+called or cache line needs to be evicted or the guard thread periodicly clear
+the whole cache.
+
+When a file is close or after a time period, we will go through the whole cache
+and write all cache line back into the sector it belongs to and wake all process
+that is waiting and reset all cache line indicator variable.
+
+When a eviction happens if the cache line needs to be evict and it is dirty we 
+will write it back to the sector it belongs to and reassign the cache line.
+
+
 >> C4: Describe your implementation of read-ahead.
+
+We create a thread as a guard thread that is always running and waiting if the 
+read head list is empty when init cache.When read block is called it will add the 
+block that is to be read and the next block into the read ahead list. Read ahead 
+guard threadwill be awake now and allocate cache line for block and get its data 
+from the sector.
 
 ---- SYNCHRONIZATION ----
 
@@ -250,13 +302,26 @@ int index;
 >> buffer cache block, how are other processes prevented from evicting
 >> that block?
 
+We have a lock for each cache line. We need to acquire the lock when modfying
+the cache line. When we call eviction we will first try to acquire the lock if
+we can't acquire the lock then we will skip this cache line. So there will be
+no racing when eviction.
+
 >> C6: During the eviction of a block from the cache, how are other
 >> processes prevented from attempting to access the block?
+
+Since we will first acquire the lock when eviction and only when we finish all
+evicting operation will the lock be released.
 
 ---- RATIONALE ----
 
 >> C7: Describe a file workload likely to benefit from buffer caching,
 >> and workloads likely to benefit from read-ahead and write-behind.
+
+When we repeatedly access one small file for multiple times or we modify one
+large file using buffer caching will improve the efficiency by avoiding repeatedly
+access disk. Read-ahead will benifit large file modification and wirte-behind will
+benifit both repeately small file access and large file modification. 
 
 			   SURVEY QUESTIONS
 			   ================
