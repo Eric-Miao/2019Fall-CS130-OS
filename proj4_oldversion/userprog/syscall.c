@@ -57,7 +57,6 @@ void is_buffer_valid(void *buffer, unsigned size)
     /*check the validity*/
     if (!is_user_vaddr((const void *)temp) || (const void *)temp == NULL || (const void *)temp < (void *)0x08048000)
     {
-      //printf("\ntemp is %d %d\n",i,size);
       exit(-1);
     }
     temp++;
@@ -86,7 +85,6 @@ syscall_handler(struct intr_frame *f UNUSED)
     /*terminate the program and free its resources */
     exit(-1);
   }
-  //printf("syscall is : %d\n",*(int *)f->esp);
   /*if syscall is halt then call it*/
   if (*(int *)f->esp == SYS_HALT)
   {
@@ -141,12 +139,9 @@ syscall_handler(struct intr_frame *f UNUSED)
   /*if syscall is create*/
   if (*(int *)f->esp == SYS_CREATE)
   {
-    //printf("call create\n");
     /*get the file name and its size*/
     get_args(f, &args[0], 2);
-    //printf("buffer length is %d",strlen(args[0]));
     /*check if the file buffer is valid*/
-    //is_buffer_valid((void *)args[0], args[1]);
     struct thread *curr = thread_current();
     /*check if the address is mapped to the physical address*/
     physical_page = pagedir_get_page(curr->pagedir, (const void *)args[0]);

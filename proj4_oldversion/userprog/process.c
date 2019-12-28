@@ -76,10 +76,7 @@ tid_t process_execute(const char *file_name)
 static void
 start_process(void *aux)
 {
-  //printf("\nin start process\n");
-  //struct info *info = (struct info *)aux;
   char *file_name = aux;
-  //thread_current()->directory = info->parent_dir;
   struct intr_frame if_;
   /*int load_status;*/
   bool success;
@@ -89,7 +86,6 @@ start_process(void *aux)
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
   success = load(file_name, &if_.eip, &if_.esp);
-  //printf("\nafter load\n");
   struct thread *curr = thread_current();
   palloc_free_page(file_name);
   if (!success)
@@ -362,11 +358,8 @@ bool load(const char *file_name, void (**eip)(void), void **esp)
     token = strtok_r(NULL, " ", &save_ptr);
   }
   /* Open executable file. */
-  //printf("\nbefore file open\n");
   struct file *inode = filesys_open(argv[0]);
-  //printf("\nafter file open\n");
   file = file_open(inode);
-  /*printf("open is : %s/n",file);*/
   if (file == NULL)
   {
     printf("load: %s: open failed\n", argv[0]);

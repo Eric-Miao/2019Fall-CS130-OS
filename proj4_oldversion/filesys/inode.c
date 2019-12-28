@@ -538,7 +538,6 @@ off_t inode_write_at(struct inode *inode, const void *buffer_, off_t size,
 
   while (size > 0)
   {
-    //printf("\nin while\n");
     /* Sector to write, starting byte offset within sector. */
     int sector_ofs = offset % BLOCK_SECTOR_SIZE;
 
@@ -554,7 +553,6 @@ off_t inode_write_at(struct inode *inode, const void *buffer_, off_t size,
       break;
 
     struct cache_line *cl;
-    //printf("\noffset is %d\n",inode->sector);
     if (!read_block(inode, offset, true, &cl))
       break;
     uint8_t *data = cache_get_data(cl);

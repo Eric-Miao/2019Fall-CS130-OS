@@ -93,7 +93,6 @@ struct cache_line *cache_allocate(block_sector_t sector, bool exclusive)
 begin:
     lock_acquire(&cache_lock);
     /*check if the sector is assigned to a cache line*/
-    //printf("\nin allocate sector: %d\n",sector);
     for (; i < MAX_CACHE; i++)
     {
         line = &cache[i];
@@ -105,7 +104,6 @@ begin:
         }
         /*release the cache lock if we find a cache line with given sector assgned*/
         lock_release(&cache_lock);
-        //printf("\nsr is %d\n",sector);
         /*put exclusive readers/writers into waiting queue*/
         line->waiters++;
         ASSERT(lock_held_by_current_thread(&line->cache_line_lock));
@@ -130,7 +128,6 @@ begin:
         line->waiters--;
         ASSERT(line->sector == sector);
         lock_release(&line->cache_line_lock);
-        //printf("\nreturn 1 %d\n",line->sector);
         return line;
     }
 
@@ -167,7 +164,6 @@ begin:
         /*get the cache line and return*/
         ASSERT(line->waiters == 0);
         lock_release(&line->cache_line_lock);
-        //printf("\nreturn 2 %d\n",line->sector);
         return line;
     }
     /*Use clock algorithm to evict*/
@@ -288,7 +284,6 @@ begin:
     caused by asynchronization buecause of different CPU performance*/
     lock_release(&cache_lock);
     timer_msleep(100);
-    //printf("\nbefore allocate again\n");
     cache_allocate(sector, exclusive);
 }
 
@@ -329,9 +324,7 @@ void *cache_get_data(struct cache_line *line)
     /*if cache has no data yet then read from disk*/
     if (!line->used)
     {
-        //printf("\n\nbefore read: %d\n\n",line->sector);
         block_read(fs_device, line->sector, line->data);
-        //printf("\n\nafter read\n\n");
         line->dirty = false;
         line->used = true;
     }
