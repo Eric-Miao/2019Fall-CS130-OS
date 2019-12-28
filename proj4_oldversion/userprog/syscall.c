@@ -415,6 +415,11 @@ bool create(const char *file, unsigned initial_size)
 {
   lock_acquire(&lock_f);
   /*return true if successfully created*/
+  if(strlen(file)>NAME_MAX)
+  {
+    lock_release(&lock_f);
+    return false;
+  }
   bool success = filesys_create(file, initial_size, false);
   lock_release(&lock_f);
   return success;
