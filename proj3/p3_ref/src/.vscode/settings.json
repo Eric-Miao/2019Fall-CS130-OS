@@ -1,0 +1,8 @@
+{
+    "files.associations": {
+      "bitmap.h": "c",
+      "swap.h": "c",
+      "page.h": "c",
+      "pagedir.h": "c"
+    }
+}
